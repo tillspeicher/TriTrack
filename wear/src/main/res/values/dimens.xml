@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <dimen name="data_item_data_font_size" tools:override="true">26sp</dimen>
+    <dimen name="data_item_description_font_size" tools:override="true">12sp</dimen>
+    <dimen name="data_item_unit_font_size" tools:override="true">10sp</dimen>
+</resources>

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:id="@+id/item_data">
+
+    <TextView
+        android:id="@+id/text_description"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_centerHorizontal="true"
+        android:text="Description"
+        android:textAlignment="center"
+        android:textSize="@dimen/data_item_description_font_size" />
+
+    <TextView
+        android:id="@+id/text_data"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@+id/text_description"
+        android:layout_centerHorizontal="true"
+        android:text=" - "
+        android:textAlignment="center"
+        android:textSize="@dimen/data_item_data_font_size"
+        android:textStyle="bold" />
+    <!--36 for phone-->
+
+    <TextView
+        android:id="@+id/text_unit"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignBaseline="@+id/text_data"
+        android:layout_alignBottom="@+id/text_data"
+        android:layout_toEndOf="@+id/text_data"
+        android:inputType="text"
+        android:text="Unit"
+        android:textSize="@dimen/data_item_unit_font_size" />
+     <!--16 for phone-->
+</RelativeLayout>
