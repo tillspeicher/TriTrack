@@ -52,8 +52,10 @@ class DataStreamer {
     }
 
     protected StorageManager resetState() {
+        // TODO: reset the UI
         mProviders.clear();
         mOperators.clear();
+        mDataListeners.clear();
         mStorageManager = new StorageManager();
 
         mTimeHandler.removeCallbacksAndMessages(null);
@@ -222,25 +224,18 @@ class DataStreamer {
                 if (!mProviders.containsKey(ActivityFeature.LONGITUDE))
                     break;
                 addOperator(new ActivityFeature[]{ActivityFeature.LATITUDE, ActivityFeature.LONGITUDE},
-                        ActivityFeature.DISTANCE_M, new Operator() {
+                        ActivityFeature.DISTANCE_RAW_M, new Operator() {
                             Double lastLat = null, lastLong = null;
                             double dist = 0.0;
                             @Override
                             public Double call(Double[] vals) {
-                                if (!mIsResumed) {
-                                    lastLat = null;
-                                    lastLong = null;
-                                    return dist;
-                                }
-                                Double curLat = vals[0];
-                                Double curLong = vals[1];
+                                double curLat = vals[0];
+                                double curLong = vals[1];
                                 if (lastLat == null) {
                                     lastLat = curLat;
                                     lastLong = curLong;
                                     return dist;
                                 }
-//                                Log.i(TAG, "computing distance between points, last vals: " +
-//                                    lastLat + ", " + lastLong + ", cur vals: " + curLat + ", " + curLong);
                                 float[] distRes = new float[1];
                                 Location.distanceBetween(lastLat, lastLong, curLat, curLong, distRes);
 //                                Log.i(TAG, "distance is " + distRes[0]);
@@ -251,6 +246,45 @@ class DataStreamer {
                             }
                         }, false /*ok?*/);
                 break;
+            case DISTANCE_RAW_M:
+                addOperator(new ActivityFeature[]{ActivityFeature.DISTANCE_RAW_M},
+                        ActivityFeature.DISTANCE_M, new Operator() {
+                            double totalDist = 0.;
+                            Double lastDist = 0.;
+
+                            @Override
+                            public Double call(Double[] vals) {
+                                if (!mIsResumed) {
+                                    lastDist = null;
+                                    return totalDist;
+                                }
+                                double rawDist = vals[0];
+                                if (lastDist == null)
+                                    lastDist = rawDist;
+                                double distDiff = rawDist - lastDist;
+                                totalDist += distDiff;
+                                return totalDist;
+                            }
+                        }, false);
+                addOperator(new ActivityFeature[]{ActivityFeature.DISTANCE_RAW_M},
+                        ActivityFeature.SPEED_MS, new TimedOperator() {
+                            // TODO: is it necessary to force updates in periodic time intervals in
+                            // case the GPS connection breaks?
+                            Double lastDist = null;
+                            @Override
+                            public Double call(Double[] vals) {
+                                double timeDiff = timeCheckpoint(true);
+                                double distM = vals[0];
+                                if (lastDist == null || timeDiff <= 0.) {
+                                    lastDist = distM;
+                                    return 0.;
+                                }
+                                double distDiff = distM - lastDist;
+                                lastDist = distM;
+                                return distDiff / timeDiff ;
+                            }
+                        }, false);
+                break;
             case DISTANCE_M:
                 addOperator(new ActivityFeature[]{ActivityFeature.DISTANCE_M},
                         ActivityFeature.DISTANCE_KM, new Operator() {
@@ -259,32 +293,13 @@ class DataStreamer {
                                 return vals[0] / 1000.0;
                             }
                         }, false);
-//                addOperator(new ActivityFeature[]{ActivityFeature.DISTANCE_M},
-//                        ActivityFeature.SPEED_KMH, new TimedOperator() {
-//                            Double lastDist = null;
-//                            @Override
-//                            public Double call(Double[] vals) {
-//                                double timeDiff = timeCheckpoint(true);
-//                                double distM = vals[0];
-//                                if (lastDist == null || timeDiff <= 0.) {
-//                                    lastDist = distM;
-//                                    return 0.;
-//                                }
-//                                double distDiff = distM - lastDist;
-//                                lastDist = distM;
-//                                // TODO: why is this output 0 when used as input to the other operators?
-//                                return distDiff / timeDiff ;
-//                            }
-//                        }, false);
                 break;
             case SPEED_MS:
                 addOperator(new ActivityFeature[]{ActivityFeature.SPEED_MS},
                         ActivityFeature.SPEED_KMH, new Operator() {
                             @Override
                             public Double call(Double[] speedMs) {
-                                Log.i(TAG, "kmh input: " + speedMs[0]);
                                 double val = speedMs[0] * 3.6;
-                                Log.i(TAG, "kmh op called, value: " + val);
                                 return val;
                             }
                         }, true);
@@ -389,7 +404,6 @@ class DataStreamer {
 
     private abstract class TimedOperator extends Operator {
         long lastTimeMs = -1;
-        long totalTimeMs = 0;
 
         double timeCheckpoint(boolean ignoreResumes) {
             if (!ignoreResumes && !mIsResumed) {
@@ -406,7 +420,6 @@ class DataStreamer {
                 timeDiff = curMs - lastTimeMs;
             }
             lastTimeMs = curMs;
-            totalTimeMs += timeDiff;
             return timeDiff / 1000.;
         }
 

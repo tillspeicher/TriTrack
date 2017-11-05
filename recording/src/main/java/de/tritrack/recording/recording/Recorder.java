@@ -3,6 +3,7 @@ package de.tritrack.recording.recording;
 import android.content.Context;
 import android.location.Location;
 import android.os.Handler;
+import android.util.Log;
 
 import java.util.List;
 import java.util.Map;
@@ -20,14 +21,20 @@ import rx.subjects.PublishSubject;
 
 public class Recorder {
 
+    private enum RecorderState {
+        STOPPED,
+        USER_PAUSED,
+        AUTO_PAUSED,
+        RUNNING
+    }
+
     private static final String TAG = "de.tritrack.Recorder";
     private static final float ACCURACY_THRES = 50.f;
-    private static final float AUTO_PAUSE_SPEED_THRES = 1.5f;
+    private static final float AUTO_PAUSE_SPEED_KMH_THRES = 6.f; //1.5f;
     private static final float AUTO_PAUSE_TIME_THRES = 10.f;
 
-    private boolean mIsStarted = false;
-    private boolean mIsResumed = false;
-    private double mLastSpeedGreaterPoint = 0.f;
+    private RecorderState mRecorderState = RecorderState.STOPPED;
+    // TODO: replace this with a function call
 
     private SmartLocation.LocationControl mLocation;
     private BleRecorder mBleRecorder;
@@ -44,6 +51,7 @@ public class Recorder {
     }
 
     private Recorder(Context context) {
+        mRecorderState = RecorderState.STOPPED;
         mLocation = SmartLocation.with(context).location(new LocationGooglePlayServicesWithFallbackProvider(context));
         mLocation.config(LocationParams.NAVIGATION);
         mBleRecorder = new BleRecorder(context);
@@ -61,6 +69,7 @@ public class Recorder {
     }
 
     public void setDataListeners(Map<ActivityFeature, UICommunication.UIDataListener> listeners) {
+        addAutoPauseListener(listeners);
         mDataStreamer.setDataListeners(listeners);
     }
 
@@ -75,33 +84,70 @@ public class Recorder {
         });
     }
 
+    private void addAutoPauseListener(Map<ActivityFeature, UICommunication.UIDataListener> listeners) {
+        // intercept speed listener for auto-pause
+        final UICommunication.UIDataListener autoPauseListener = new UICommunication.UIDataListener() {
+            private double lastSufficientSpeedTime = 0.f;
+
+            @Override
+            public void onFeatureChanged(double newSpeed) {
+                // TODO: can it happen that there are no GPS updates anymore and newSpeed won't get
+                // updated correctly?
+                // TODO: implement different auto-pause threshold depending on the activity
+                Log.i(TAG, "new speed is " + newSpeed);
+                if (isRunning() && newSpeed < AUTO_PAUSE_SPEED_KMH_THRES
+                        && mDataStreamer.getTotalTime() - lastSufficientSpeedTime > AUTO_PAUSE_TIME_THRES) {
+                    // TODO: update the UI (the pause button)
+                    togglePause(true);
+                } else if (newSpeed >= AUTO_PAUSE_SPEED_KMH_THRES) {
+                    lastSufficientSpeedTime = mDataStreamer.getTotalTime();
+                    if (mRecorderState == RecorderState.AUTO_PAUSED)
+                        togglePause(true);
+                }
+            }
+        };
+        final UICommunication.UIDataListener uiSpeedListener = listeners.get(ActivityFeature.SPEED_KMH);
+        UICommunication.UIDataListener speedListener;
+        if (uiSpeedListener == null) {
+            speedListener = autoPauseListener;
+        } else {
+            speedListener = new UICommunication.UIDataListener() {
+                @Override
+                public void onFeatureChanged(double newSpeed) {
+                    Log.i(TAG, "aggregate speed changed: " + newSpeed);
+                    uiSpeedListener.onFeatureChanged(newSpeed);
+                    autoPauseListener.onFeatureChanged(newSpeed);
+                }
+            };
+        }
+        listeners.put(ActivityFeature.SPEED_KMH, speedListener);
+    }
+
     /**
      * @return True if the recording was started, false if it was stopped
      */
     public boolean toggleRecording() {
-        if (mIsStarted) {
+        if (mRecorderState != RecorderState.STOPPED) {
             // stop recording
-            mIsStarted = false;
-            mIsResumed = false;
+            mRecorderState = RecorderState.STOPPED;
             mLocation.stop();
             mBleRecorder.stopRecording();
             mStorageManager.stopStoring();
             mDataStreamer.setResumed(false);
-            //mHandler.removeCallbacksAndMessages(null);
+            mHandler.removeCallbacksAndMessages(null);
             return false;
         }
 
         // start recording
-        mIsStarted = true;
-        mIsResumed = true;
+        mRecorderState = RecorderState.RUNNING;
         mStorageManager = mDataStreamer.resetState();
 
         final PublishSubject<Double> latPublisher = mDataStreamer
                 .setInput(ActivityFeature.LATITUDE, true);
         final PublishSubject<Double> lonPublisher = mDataStreamer
                 .setInput(ActivityFeature.LONGITUDE, true);
-        final PublishSubject<Double> speedPublisher = mDataStreamer
-                .setInput(ActivityFeature.SPEED_MS, false);
+//        final PublishSubject<Double> speedPublisher = mDataStreamer
+//                .setInput(ActivityFeature.SPEED_MS, false);
         final PublishSubject<Double> altitudePublisher= mDataStreamer
                 .setInput(ActivityFeature.ALTITUDE, true);
 
@@ -113,27 +159,18 @@ public class Recorder {
 //                if (location.hasAccuracy() && location.getAccuracy() > ACCURACY_THRES)
 //                    // the accuracy is too low to be useful
 //                    return;
+
                 latPublisher.onNext(location.getLatitude());
                 lonPublisher.onNext(location.getLongitude());
-//                if (location.hasSpeed()) {
-                    speedPublisher.onNext((double) location.getSpeed());
-                    // TODO
-                    if (mIsResumed && location.getSpeed() < AUTO_PAUSE_SPEED_THRES
-                            && mDataStreamer.getTotalTime() - mLastSpeedGreaterPoint > AUTO_PAUSE_TIME_THRES) {
-                        togglePause();
-                    } else if (location.getSpeed() > AUTO_PAUSE_SPEED_THRES){
-                        mLastSpeedGreaterPoint = mDataStreamer.getTotalTime();
-                        if (!mIsResumed)
-                            // TODO: do this only if the user didn't pause
-                            togglePause();
-                    }
-//                } else {
-//                    // TODO: correct?
-//                    speedPublisher.onNext(0.0);
-//                }
+
+//                assert location.hasSpeed();
+                // TODO: compute speed values ourselves so we don't have to rely on this
+                // TODO: this can also make sure that speed values get updated even though there are not location updates any more
+
+//                speedPublisher.onNext((double) location.getSpeed());
+
                 if (location.hasAltitude())
                     altitudePublisher.onNext(location.getAltitude());
-                //Log.i(TAG, "location changed");
             }
         };
         mLocation.start(locListener);
@@ -157,23 +194,38 @@ public class Recorder {
 //    }
 
     public boolean isRecording() {
-        return mIsStarted;
+        return mRecorderState != RecorderState.STOPPED;
+    }
+
+    private boolean isRunning() {
+        return mRecorderState == RecorderState.RUNNING;
+    }
+
+    public boolean togglePause() {
+        return togglePause(false);
     }
 
     /**
      * @return True if recording has commenced, false if it was paused
      */
-    public boolean togglePause() {
-        assert mIsStarted;
-        mIsResumed = !mIsResumed;
-        mDataStreamer.setResumed(mIsResumed);
-        if (mIsResumed) {
+    private boolean togglePause(boolean autoPaused) {
+        assert mRecorderState != RecorderState.STOPPED;
+        if (isRunning()) {
+            if (autoPaused)
+                mRecorderState = RecorderState.AUTO_PAUSED;
+            else
+                mRecorderState = RecorderState.USER_PAUSED;
+            mDataStreamer.setResumed(false);
+            // TODO: simply stopping the storing is not enough, with this format there will be a jump
+            mStorageManager.stopStoring();
+            return false;
+        } else {
+            mRecorderState = RecorderState.RUNNING;
+            mDataStreamer.setResumed(true);
             // TODO: simply stopping the storing is not enough, with this format there will be a jump
             mStorageManager.startStoring();
-        } else {
-            mStorageManager.stopStoring();
+            return true;
         }
-        return mIsResumed;
     }
 
 }
