@@ -94,7 +94,6 @@ public class Recorder {
                 // TODO: can it happen that there are no GPS updates anymore and newSpeed won't get
                 // updated correctly?
                 // TODO: implement different auto-pause threshold depending on the activity
-                Log.i(TAG, "new speed is " + newSpeed);
                 if (isRunning() && newSpeed < AUTO_PAUSE_SPEED_KMH_THRES
                         && mDataStreamer.getTotalTime() - lastSufficientSpeedTime > AUTO_PAUSE_TIME_THRES) {
                     // TODO: update the UI (the pause button)
@@ -114,7 +113,6 @@ public class Recorder {
             speedListener = new UICommunication.UIDataListener() {
                 @Override
                 public void onFeatureChanged(double newSpeed) {
-                    Log.i(TAG, "aggregate speed changed: " + newSpeed);
                     uiSpeedListener.onFeatureChanged(newSpeed);
                     autoPauseListener.onFeatureChanged(newSpeed);
                 }
@@ -146,8 +144,6 @@ public class Recorder {
                 .setInput(ActivityFeature.LATITUDE, true);
         final PublishSubject<Double> lonPublisher = mDataStreamer
                 .setInput(ActivityFeature.LONGITUDE, true);
-//        final PublishSubject<Double> speedPublisher = mDataStreamer
-//                .setInput(ActivityFeature.SPEED_MS, false);
         final PublishSubject<Double> altitudePublisher= mDataStreamer
                 .setInput(ActivityFeature.ALTITUDE, true);
 
@@ -163,12 +159,6 @@ public class Recorder {
                 latPublisher.onNext(location.getLatitude());
                 lonPublisher.onNext(location.getLongitude());
 
-//                assert location.hasSpeed();
-                // TODO: compute speed values ourselves so we don't have to rely on this
-                // TODO: this can also make sure that speed values get updated even though there are not location updates any more
-
-//                speedPublisher.onNext((double) location.getSpeed());
-
                 if (location.hasAltitude())
                     altitudePublisher.onNext(location.getAltitude());
             }
@@ -182,16 +172,6 @@ public class Recorder {
 
         return true;
     }
-
-//    public void stopRecording() {
-//        assert mIsStarted;
-//        mIsResumed = false;
-//        mIsStarted = false;
-//        mLocation.stop();
-//        mBleRecorder.stopRecording();
-//        mTimeHandler.removeCallbacksAndMessages(null);
-//        mStorageManager.stopStoring();
-//    }
 
     public boolean isRecording() {
         return mRecorderState != RecorderState.STOPPED;
