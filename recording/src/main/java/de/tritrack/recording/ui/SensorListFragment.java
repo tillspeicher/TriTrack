@@ -3,7 +3,6 @@ package de.tritrack.recording.ui;
 import android.content.Context;
 import android.os.Bundle;
 import android.support.v4.app.Fragment;
-import android.support.v7.widget.GridLayoutManager;
 import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
 import android.view.LayoutInflater;
@@ -11,20 +10,20 @@ import android.view.View;
 import android.view.ViewGroup;
 
 import de.tritrack.recording.R;
-import de.tritrack.recording.ui.dummy.DummyContent;
-import de.tritrack.recording.ui.dummy.DummyContent.DummyItem;
-
-import java.util.List;
+import de.tritrack.recording.recording.BlePool;
+import de.tritrack.recording.recording.Recorder;
 
 /**
  * A fragment representing a list of Items.
  * <p/>
- * Activities containing this fragment MUST implement the {@link OnListFragmentInteractionListener}
+ * Activities containing this fragment MUST implement the {@link OnSensorListInteractionListener}
  * interface.
  */
 public class SensorListFragment extends Fragment {
 
-    private OnListFragmentInteractionListener mListener;
+    private OnSensorListInteractionListener mListener;
+    private BlePool.SensorDeviceScanListener mSensorListener;
+    private Recorder mRecorder;
 
     /**
      * Mandatory empty constructor for the fragment manager to instantiate the
@@ -50,14 +49,16 @@ public class SensorListFragment extends Fragment {
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
                              Bundle savedInstanceState) {
-        View view = inflater.inflate(R.layout.sensor_item_list, container, false);
+        View view = inflater.inflate(R.layout.sensor_list, container, false);
 
         // Set the adapter
         if (view instanceof RecyclerView) {
             Context context = view.getContext();
             RecyclerView recyclerView = (RecyclerView) view;
             recyclerView.setLayoutManager(new LinearLayoutManager(context));
-            recyclerView.setAdapter(new SensorListAdapter(DummyContent.ITEMS, mListener));
+            SensorListAdapter adapter = new SensorListAdapter(mListener);
+            recyclerView.setAdapter(adapter);
+            mSensorListener = adapter;
         }
         return view;
     }
@@ -66,12 +67,26 @@ public class SensorListFragment extends Fragment {
     @Override
     public void onAttach(Context context) {
         super.onAttach(context);
-        if (context instanceof OnListFragmentInteractionListener) {
-            mListener = (OnListFragmentInteractionListener) context;
+        if (context instanceof OnSensorListInteractionListener) {
+            mListener = (OnSensorListInteractionListener) context;
+            mRecorder = Recorder.getInstance(context);
         } else {
             throw new RuntimeException(context.toString()
-                    + " must implement OnListFragmentInteractionListener");
+                    + " must implement OnSensorListInteractionListener");
         }
+    }
+
+    @Override
+    public void onStart() {
+        super.onStart();
+        mRecorder.startBleScan(mSensorListener);
+    }
+
+    @Override
+    public void onStop() {
+        super.onStop();
+        // TODO: scan in Background
+        mRecorder.stopBleScan();
     }
 
     @Override
@@ -86,12 +101,8 @@ public class SensorListFragment extends Fragment {
      * to the activity and potentially other fragments contained in that
      * activity.
      * <p/>
-     * See the Android Training lesson <a href=
-     * "http://developer.android.com/training/basics/fragments/communicating.html"
-     * >Communicating with Other Fragments</a> for more information.
      */
-    public interface OnListFragmentInteractionListener {
-        // TODO: Update argument type and name
-        void onListFragmentInteraction(DummyItem item);
+    public interface OnSensorListInteractionListener {
+        void onSensorEnableChange(BlePool.SensorDevice item, boolean isEnabled);
     }
 }

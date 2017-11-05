@@ -1,20 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:orientation="horizontal">
+    android:layout_height="@dimen/sensor_row_height"
+    android:orientation="horizontal"
+    android:layout_marginLeft="@dimen/sensor_layout_margin"
+    android:layout_marginRight="@dimen/sensor_layout_margin" >
 
     <TextView
         android:id="@+id/text_dev_name"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
         android:layout_weight="1"
-        android:text="TextView" />
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
+        android:textSize="@dimen/sensor_text_font_size"
+        android:text="Device"/>
 
     <Switch
         android:id="@+id/switch_use_dev"
         android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_weight="1"
-        android:text="Switch" />
+        android:layout_height="match_parent"
+        android:textSize="@dimen/sensor_text_font_size"/>
 </LinearLayout>

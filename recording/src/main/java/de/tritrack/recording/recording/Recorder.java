@@ -2,8 +2,9 @@ package de.tritrack.recording.recording;
 
 import android.content.Context;
 import android.location.Location;
-import android.util.Log;
+import android.os.Handler;
 
+import java.util.List;
 import java.util.Map;
 
 import io.nlopez.smartlocation.OnLocationUpdatedListener;
@@ -32,6 +33,7 @@ public class Recorder {
     private BleRecorder mBleRecorder;
     private DataStreamer mDataStreamer;
     private StorageManager mStorageManager;
+    private Handler mHandler;
 
     private static Recorder instance = null;
 
@@ -46,9 +48,11 @@ public class Recorder {
         mLocation.config(LocationParams.NAVIGATION);
         mBleRecorder = new BleRecorder(context);
         mDataStreamer = new DataStreamer();
+        mHandler = new Handler();
+//        startPeriodicScanning();
     }
 
-    public void startBleScan(UICommunication.BleScanListener scanListener) {
+    public void startBleScan(BlePool.SensorDeviceScanListener scanListener) {
         mBleRecorder.startDeviceScan(scanListener);
     }
 
@@ -58,6 +62,17 @@ public class Recorder {
 
     public void setDataListeners(Map<ActivityFeature, UICommunication.UIDataListener> listeners) {
         mDataStreamer.setDataListeners(listeners);
+    }
+
+    private void startPeriodicScanning() {
+        // TODO: do we need to stop this at some point?
+        mHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                mBleRecorder.periodicSensorCheck(mDataStreamer);
+                mHandler.postDelayed(this, 2000);
+            }
+        });
     }
 
     /**
@@ -72,6 +87,7 @@ public class Recorder {
             mBleRecorder.stopRecording();
             mStorageManager.stopStoring();
             mDataStreamer.setResumed(false);
+            //mHandler.removeCallbacksAndMessages(null);
             return false;
         }
 
@@ -81,13 +97,13 @@ public class Recorder {
         mStorageManager = mDataStreamer.resetState();
 
         final PublishSubject<Double> latPublisher = mDataStreamer
-                .addInput(ActivityFeature.LATITUDE, true);
+                .setInput(ActivityFeature.LATITUDE, true);
         final PublishSubject<Double> lonPublisher = mDataStreamer
-                .addInput(ActivityFeature.LONGITUDE, true);
+                .setInput(ActivityFeature.LONGITUDE, true);
         final PublishSubject<Double> speedPublisher = mDataStreamer
-                .addInput(ActivityFeature.SPEED_MS, false);
+                .setInput(ActivityFeature.SPEED_MS, false);
         final PublishSubject<Double> altitudePublisher= mDataStreamer
-                .addInput(ActivityFeature.ALTITUDE, true);
+                .setInput(ActivityFeature.ALTITUDE, true);
 
         OnLocationUpdatedListener locListener = new OnLocationUpdatedListener() {
             @Override
@@ -124,6 +140,9 @@ public class Recorder {
         mBleRecorder.startRecording(mDataStreamer);
         mDataStreamer.setResumed(true);
         mStorageManager.startStoring();
+
+//        startPeriodicScanning();
+
         return true;
     }
 

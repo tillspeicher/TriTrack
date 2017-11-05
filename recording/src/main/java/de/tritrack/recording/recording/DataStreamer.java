@@ -25,6 +25,7 @@ class DataStreamer {
     private static final String TAG = "DataStreamer";
     private static final int TIME_DELAY_MS = 1000;
 
+    private Map<ActivityFeature, PublishSubject<Double>> mInputs;
     private Map<ActivityFeature, Observable<Double>> mProviders;
     private Map<ActivityFeature, UICommunication.UIDataListener> mDataListeners;
     private List<Operator> mOperators;
@@ -39,6 +40,7 @@ class DataStreamer {
 
 
     protected DataStreamer() {
+        mInputs = new HashMap<>();
         mProviders = new HashMap<>();
         mDataListeners = new HashMap<>();
         mOperators = new ArrayList<>();
@@ -55,7 +57,7 @@ class DataStreamer {
         mStorageManager = new StorageManager();
 
         mTimeHandler.removeCallbacksAndMessages(null);
-        mTimePublisher = addInput(ActivityFeature.TIME_S, true);
+        mTimePublisher = setInput(ActivityFeature.TIME_S, true);
         mTimeOffsetMs = 0;
 
         return mStorageManager;
@@ -100,26 +102,30 @@ class DataStreamer {
         return mProviders.containsKey(activityFeature);
     }
 
-    protected PublishSubject<Double> addInput(ActivityFeature feature,
-                            boolean logFeature) throws IllegalArgumentException {
-        if (mProviders.containsKey(feature))
-            throw new IllegalArgumentException("Cannot add source of feature " + feature + " twice.");
+    protected PublishSubject<Double> setInput(ActivityFeature feature,
+                  boolean logFeature) {
+//        if (mProviders.containsKey(feature))
+//            throw new IllegalArgumentException("Cannot add source of feature " + feature + " twice.");
         Log.i(TAG, "adding source for feature " + feature);
 
-        PublishSubject<Double> inSubject = PublishSubject.create();
-        Observable<Double> obs = inSubject.map(new Func1<Double, Double>() {
-            @Override
-            public Double call(Double val) {
-                return val;
+        PublishSubject<Double> inSubject = mInputs.get(feature);
+        if (inSubject == null) {
+            inSubject = PublishSubject.create();
+            mInputs.put(feature, inSubject);
+            Observable<Double> obs = inSubject.map(new Func1<Double, Double>() {
+                @Override
+                public Double call(Double val) {
+                    return val;
+                }
+            });
+            addUiObserver(feature, obs);
+            if (logFeature) {
+                mStorageManager.addFeature(feature);
+                addLoggingObserver(feature, obs);
             }
-        });
-        addUiObserver(feature, obs);
-        if (logFeature) {
-            mStorageManager.addFeature(feature);
-            addLoggingObserver(feature, obs);
+            mProviders.put(feature, obs);
+            checkDependantOperators(feature);
         }
-        mProviders.put(feature, obs);
-        checkDependantOperators(feature);
 
         return inSubject;
     }

@@ -14,10 +14,6 @@ object UICommunication {
         fun onFeatureChanged(newValue: Double)
     }
 
-    interface BleScanListener {
-        fun resultAvailable(devices: List<BlePool.BleDevice>)
-    }
-
     private val mUiHandler = Handler(Looper.getMainLooper())
 
     fun runOnUiThread(r: Runnable) {

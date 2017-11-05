@@ -36,34 +36,23 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-        val toolbar = findViewById(R.id.toolbar) as Toolbar
+        val toolbar = findViewById<Toolbar>(R.id.toolbar)
         setSupportActionBar(toolbar)
 
         mRec = Recorder.getInstance(applicationContext)
         val featureLayout = arrayOf(arrayOf(ActivityFeature.TIME_S, ActivityFeature.DISTANCE_KM), arrayOf(ActivityFeature.SPEED_KMH, ActivityFeature.AVG_SPEED_KMH), //ActivityFeature.ELEVATION_GAIN},
                 arrayOf(ActivityFeature.ELEVATION_GAIN, ActivityFeature.MAX_SPEED_KMH), arrayOf(ActivityFeature.HEART_RATE, ActivityFeature.AVG_HEART_RATE), arrayOf(ActivityFeature.POWER_COMBINED, ActivityFeature.AVG_POWER_COMBINED), arrayOf(ActivityFeature.CADENCE, ActivityFeature.AVG_CADENCE))
-        val contentLayout = findViewById(R.id.content_main) as LinearLayout
+        val contentLayout = findViewById<LinearLayout>(R.id.content_main)
         val textViews = ArrayList<TextView>()
         val listeners = DataTableProvider.getTableView(featureLayout, this, contentLayout, textViews)
         mRec!!.setDataListeners(listeners)
 
-        mStartStopButton = findViewById(R.id.button_start_stop) as ImageButton
+        mStartStopButton = findViewById<ImageButton>(R.id.button_start_stop)
         mStartStopButton!!.setOnClickListener { startStopTracking() }
-        mPauseResumeButton = findViewById(R.id.button_pause_resume) as ImageButton
+        mPauseResumeButton = findViewById<ImageButton>(R.id.button_pause_resume)
         mPauseResumeButton!!.isEnabled = false
-        mLapButton = findViewById(R.id.button_lap) as ImageButton
+        mLapButton = findViewById<ImageButton>(R.id.button_lap)
         mLapButton!!.isEnabled = false
-
-        //        FloatingActionButton fab = (FloatingActionButton) findViewById(R.id.fab);
-        //        fab.setOnClickListener(new View.OnClickListener() {
-        //            @Override
-        //            public void onClick(View view) {
-        //                //Snackbar.make(view, "Replace with your own action", Snackbar.LENGTH_LONG)
-        //                //        .setAction("Action", null).show();
-        //                //if (!mRec.isRecording()) mRec.startRecording();
-        //                startStopTracking(view);
-        //            }
-        //        });
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {

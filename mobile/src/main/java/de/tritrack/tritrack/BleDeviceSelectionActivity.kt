@@ -1,35 +1,21 @@
 package de.tritrack.tritrack
 
-import android.content.Context
 import android.os.Bundle
-import android.support.design.widget.FloatingActionButton
-import android.support.design.widget.Snackbar
 import android.support.v7.app.AppCompatActivity
 import android.support.v7.widget.Toolbar
-import android.view.LayoutInflater
-import android.view.View
-import android.view.ViewGroup
-import android.widget.AdapterView
-import android.widget.ArrayAdapter
-import android.widget.ListView
-import android.widget.TextView
-
-import java.util.ArrayList
-
 import de.tritrack.recording.recording.BlePool
-import de.tritrack.recording.recording.Recorder
-import de.tritrack.recording.recording.UICommunication
-import de.tritrack.recording.ui.SensorListFragment
-import de.tritrack.recording.ui.dummy.DummyContent
 
-class BleDeviceSelectionActivity : AppCompatActivity(), SensorListFragment.OnListFragmentInteractionListener {
+import de.tritrack.recording.recording.Recorder
+import de.tritrack.recording.ui.SensorListFragment
+
+class BleDeviceSelectionActivity : AppCompatActivity(), SensorListFragment.OnSensorListInteractionListener {
 
     private var mRecorder: Recorder? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_ble_device_selection)
-        val toolbar = findViewById(R.id.toolbar) as Toolbar
+        val toolbar = findViewById<Toolbar>(R.id.toolbar)
         setSupportActionBar(toolbar)
         supportActionBar!!.setDisplayHomeAsUpEnabled(true)
 
@@ -69,7 +55,7 @@ class BleDeviceSelectionActivity : AppCompatActivity(), SensorListFragment.OnLis
 //        super.onStop()
 //    }
 
-    public override fun onListFragmentInteraction(item: DummyContent.DummyItem?) {
+    override fun onSensorEnableChange(item: BlePool.SensorDevice?, isEnabled: Boolean) {
         TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
     }
 }
