@@ -29,11 +29,12 @@ enum class SensorFeature private constructor(val characteristic: UUID, private v
         val cpm = CyclingPowerMeasurement(characteristicValue)
         val res = ArrayList<Double>()
         res.add(cpm.power.toDouble())
-        if (cpm.isCrankRevPresent)
-        // TODO: need to do conversion here
-        //res.add((double) cpm.getCumulativeCrankRevolutions());
+        if (cpm.isCrankRevPresent) {
+            // TODO: can RMP be computed here?
+            res.add(cpm.cumulativeCrankRevolutions.toDouble())
             res.add(cpm.lastCrankEventTime.toDouble())
-        else
+        } else
+            res.add(0.0)
             res.add(0.0)
         res
     });

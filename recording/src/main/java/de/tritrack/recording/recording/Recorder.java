@@ -30,7 +30,8 @@ public class Recorder {
 
     private static final String TAG = "de.tritrack.Recorder";
     private static final float ACCURACY_THRES = 50.f;
-    private static final float AUTO_PAUSE_SPEED_KMH_THRES = 6.f; //1.5f;
+    //private static final float AUTO_PAUSE_SPEED_KMH_THRES = 6.f; //1.5f;
+    private static final float AUTO_PAUSE_SPEED_KMH_THRES = -1.f;
     private static final float AUTO_PAUSE_TIME_THRES = 10.f;
 
     private RecorderState mRecorderState = RecorderState.STOPPED;
@@ -69,7 +70,8 @@ public class Recorder {
     }
 
     public void setDataListeners(Map<ActivityFeature, UICommunication.UIDataListener> listeners) {
-        addAutoPauseListener(listeners);
+        // TODO: add settings switch for auto-pause
+//        addAutoPauseListener(listeners);
         mDataStreamer.setDataListeners(listeners);
     }
 

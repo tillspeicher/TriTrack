@@ -48,6 +48,7 @@ class DataStreamer {
     }
 
     protected void setDataListeners(Map<ActivityFeature, UICommunication.UIDataListener> listeners) {
+        Log.i(TAG, "Settiong data listeners");
         mDataListeners = listeners;
     }
 
@@ -55,12 +56,12 @@ class DataStreamer {
         // TODO: reset the UI
         mProviders.clear();
         mOperators.clear();
-        mDataListeners.clear();
+        //mDataListeners.clear();
         mStorageManager = new StorageManager();
 
         mTimeHandler.removeCallbacksAndMessages(null);
-        mTimePublisher = setInput(ActivityFeature.TIME_S, true);
         mTimeOffsetMs = 0;
+        mTimePublisher = setInput(ActivityFeature.TIME_S, true);
 
         return mStorageManager;
     }
@@ -344,9 +345,12 @@ class DataStreamer {
                             }
                         }, false);
                 break;
+            case CUMULATIVE_CRANK_REVOLUTIONS:
+                break;
             case LAST_CRANK_EVENT:
-                addOperator(new ActivityFeature[]{ActivityFeature.LAST_CRANK_EVENT},
-                        ActivityFeature.CADENCE, new EventPerMinOperator(), true);
+                addOperator(new ActivityFeature[]{ActivityFeature.CUMULATIVE_CRANK_REVOLUTIONS,
+                                ActivityFeature.LAST_CRANK_EVENT}, ActivityFeature.CADENCE,
+                        new EventPerMinOperator(), true);
                 break;
             case CADENCE:
                 addOperator(new ActivityFeature[]{ActivityFeature.CADENCE},
@@ -357,10 +361,12 @@ class DataStreamer {
 
     private void addUiObserver(final ActivityFeature feature, Observable<Double> obs) {
         final UICommunication.UIDataListener listener = mDataListeners.get(feature);
-        if (listener == null)
+        if (listener == null) {
+            Log.i(TAG, "cannot find listener for feature " + feature);
             // TODO: maybe change this such that you can only register listeners if there is a
             // provider for the feature
             return;
+        }
         obs.subscribe(new Observer<Double>() {
             @Override
             public void onNext(Double val) {
@@ -461,20 +467,31 @@ class DataStreamer {
     }
 
     private class EventPerMinOperator extends Operator {
+        double lastCumulativeRevolutions = 0;
         Double lastTime = null;
         @Override
         public Double call(Double[] doubles) {
-            Double time = doubles[0];
+            double revolutions = doubles[0];
+            double time = doubles[1];
             if (lastTime == null) {
+                lastCumulativeRevolutions = revolutions;
                 lastTime = time;
                 return 0.;
             }
             if (time == lastTime)
                 return 0.;
-            double diff = time - lastTime;
+
+            double revDiff = revolutions - lastCumulativeRevolutions;
+            if (revolutions < lastCumulativeRevolutions)
+                revDiff += 65535.;
+
+            double timeDiff = time - lastTime;
             if (time < lastTime)
-                diff += 65535.;
-            double rpm = 60. * 1024. / diff;
+                timeDiff += 65535.;
+
+            double rpm = revDiff * 60. * 1024. / timeDiff;
+
+            lastCumulativeRevolutions = revolutions;
             lastTime = time;
             return rpm;
         }

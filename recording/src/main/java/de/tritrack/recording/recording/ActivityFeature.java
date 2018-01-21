@@ -40,6 +40,7 @@ public enum ActivityFeature {
     POWER_COMBINED ("Power combined", "W", new DecimalFormat("#.#")),
     AVG_POWER_COMBINED ("Avg Power combined", "W", new DecimalFormat("#")),
     MAX_POWER_COMBINED ("Max Power combined", "W", new DecimalFormat("#")),
+    CUMULATIVE_CRANK_REVOLUTIONS ("Cumulative Crank Revolutions", "1/1024s", new DecimalFormat("#")),
     LAST_CRANK_EVENT ("Last Crank Event", "1/1024s", new DecimalFormat("#")),
     CADENCE ("Cadence", "rpm", new DecimalFormat("#")),
     AVG_CADENCE ("Avg Cadence", "rpm", new DecimalFormat("#"));

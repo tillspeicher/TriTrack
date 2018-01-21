@@ -223,6 +223,7 @@ internal class BleRecorder(context: Context) {
                     else
                         activityFeatures.add(ActivityFeature.POWER_COMBINED)
                     // TODO: check whether the sensor supports this
+                    activityFeatures.add(ActivityFeature.CUMULATIVE_CRANK_REVOLUTIONS)
                     activityFeatures.add(ActivityFeature.LAST_CRANK_EVENT)
                 }
             }

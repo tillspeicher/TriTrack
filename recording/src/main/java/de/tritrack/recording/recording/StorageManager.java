@@ -51,6 +51,7 @@ class StorageManager {
 
     public void setValue(ActivityFeature feature, Double value) {
         assert mFeaturePositions.containsKey(feature);
+        Log.i(TAG, "getting feature " + feature);
         int featurePos = mFeaturePositions.get(feature);
         mCurData.set(featurePos, value);
     }
