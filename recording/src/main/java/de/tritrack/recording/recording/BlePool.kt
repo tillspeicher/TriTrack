@@ -111,8 +111,7 @@ object BlePool {
                      sensorFeatures: Map<SensorFeature, List<ActivityFeature>>) {
         assert(!mDiscoveredDevices.containsKey(device.macAddress))
 
-        val disconnectedSavedDevice = mDisconnectedSavedDevices.remove(device.macAddress)
-        val enabled = disconnectedSavedDevice != null
+        val enabled = mDisconnectedSavedDevices.remove(device.macAddress) != null
         val bleDevice = SensorDevice(device, sensorFeatures, enabled)
         mDiscoveredDevices.put(device.macAddress, bleDevice)
         updateUi()

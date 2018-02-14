@@ -47,9 +47,9 @@ class DataStreamer {
         mTimeHandler = new Handler();
     }
 
-    protected void setDataListeners(Map<ActivityFeature, UICommunication.UIDataListener> listeners) {
+    protected void addDataListeners(Map<ActivityFeature, UICommunication.UIDataListener> listeners) {
         Log.i(TAG, "Settiong data listeners");
-        mDataListeners = listeners;
+        mDataListeners.putAll(listeners);
     }
 
     protected StorageManager resetState() {
@@ -345,12 +345,27 @@ class DataStreamer {
                             }
                         }, false);
                 break;
+            case CUMULATIVE_WHEEL_REVOLUTIONS:
+                break;
+            case LAST_WHEEL_EVENT:
+                final double wheel_circumference = 2.76; // TODO: check, make configurable
+                addOperator(new ActivityFeature[]{ActivityFeature.CUMULATIVE_WHEEL_REVOLUTIONS,
+                                ActivityFeature.LAST_WHEEL_EVENT}, ActivityFeature.DISTANCE_KM_REV,
+                        new Operator() {
+                            @Override
+                            public Double call(Double[] vals) {
+                                return vals[0] * wheel_circumference / 1000;
+                            }
+                        }, false);
+                addOperator(new ActivityFeature[]{ActivityFeature.CUMULATIVE_WHEEL_REVOLUTIONS,
+                                ActivityFeature.LAST_WHEEL_EVENT}, ActivityFeature.SPEED_KMH_REV,
+                        new EventPerMinOperator(wheel_circumference * 0.06), false);
             case CUMULATIVE_CRANK_REVOLUTIONS:
                 break;
             case LAST_CRANK_EVENT:
                 addOperator(new ActivityFeature[]{ActivityFeature.CUMULATIVE_CRANK_REVOLUTIONS,
                                 ActivityFeature.LAST_CRANK_EVENT}, ActivityFeature.CADENCE,
-                        new EventPerMinOperator(), true);
+                        new EventPerMinOperator(1), true);
                 break;
             case CADENCE:
                 addOperator(new ActivityFeature[]{ActivityFeature.CADENCE},
@@ -467,8 +482,15 @@ class DataStreamer {
     }
 
     private class EventPerMinOperator extends Operator {
+
+        private double multiplicator = 1;
         double lastCumulativeRevolutions = 0;
         Double lastTime = null;
+
+        public EventPerMinOperator(double multiplicator) {
+            this.multiplicator = multiplicator;
+        }
+
         @Override
         public Double call(Double[] doubles) {
             double revolutions = doubles[0];
@@ -493,7 +515,7 @@ class DataStreamer {
 
             lastCumulativeRevolutions = revolutions;
             lastTime = time;
-            return rpm;
+            return rpm * multiplicator;
         }
     }
 

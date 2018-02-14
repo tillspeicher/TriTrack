@@ -6,13 +6,12 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.support.design.widget.FloatingActionButton
-import android.support.v4.app.ActivityCompat
+import android.support.v4.app.*
 import android.support.v4.content.ContextCompat
+import android.support.v4.view.ViewPager
 import android.support.v7.app.AppCompatActivity
 import android.support.v7.widget.Toolbar
-import android.view.View
-import android.view.Menu
-import android.view.MenuItem
+import android.view.*
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.RelativeLayout
@@ -29,6 +28,7 @@ class MainActivity : AppCompatActivity() {
 
     private var mRec: Recorder? = null
 
+    private var mViewPager: ViewPager? = null
     private var mStartStopButton: ImageButton? = null
     private var mPauseResumeButton: ImageButton? = null
     private var mLapButton: ImageButton? = null
@@ -40,12 +40,16 @@ class MainActivity : AppCompatActivity() {
         setSupportActionBar(toolbar)
 
         mRec = Recorder.getInstance(applicationContext)
-        val featureLayout = arrayOf(arrayOf(ActivityFeature.TIME_S, ActivityFeature.DISTANCE_KM), arrayOf(ActivityFeature.SPEED_KMH, ActivityFeature.AVG_SPEED_KMH), //ActivityFeature.ELEVATION_GAIN},
-                arrayOf(ActivityFeature.ELEVATION_GAIN, ActivityFeature.MAX_SPEED_KMH), arrayOf(ActivityFeature.HEART_RATE, ActivityFeature.AVG_HEART_RATE), arrayOf(ActivityFeature.POWER_COMBINED, ActivityFeature.AVG_POWER_COMBINED), arrayOf(ActivityFeature.CADENCE, ActivityFeature.AVG_CADENCE))
-        val contentLayout = findViewById<LinearLayout>(R.id.content_main)
-        val textViews = ArrayList<TextView>()
-        val listeners = DataTableProvider.getTableView(featureLayout, this, contentLayout, textViews)
-        mRec!!.setDataListeners(listeners)
+//        val featureLayout = arrayOf(arrayOf(ActivityFeature.TIME_S, ActivityFeature.DISTANCE_KM), arrayOf(ActivityFeature.SPEED_KMH, ActivityFeature.AVG_SPEED_KMH), //ActivityFeature.ELEVATION_GAIN},
+//                arrayOf(ActivityFeature.ELEVATION_GAIN, ActivityFeature.MAX_SPEED_KMH), arrayOf(ActivityFeature.HEART_RATE, ActivityFeature.AVG_HEART_RATE), arrayOf(ActivityFeature.POWER_COMBINED, ActivityFeature.AVG_POWER_COMBINED), arrayOf(ActivityFeature.CADENCE, ActivityFeature.AVG_CADENCE))
+//        val contentLayout = findViewById<LinearLayout>(R.id.content_main)
+//        val textViews = ArrayList<TextView>()
+//        val listeners = DataTableProvider.getTableView(featureLayout, this, contentLayout, textViews)
+//        mRec!!.setDataListeners(listeners)
+
+        val adapter = InfoScreenPagerAdapter(supportFragmentManager)
+        mViewPager = findViewById<ViewPager>(R.id.info_screen_pager)
+        mViewPager!!.adapter = adapter
 
         mStartStopButton = findViewById<ImageButton>(R.id.button_start_stop)
         mStartStopButton!!.setOnClickListener { startStopTracking() }
@@ -165,6 +169,66 @@ class MainActivity : AppCompatActivity() {
         private val REQUEST_CODE_LOCATION = 0
         private val REQUEST_CODE_EXTERNAL_STORAGE = 1
         private val REQUEST_CODE_BOTH = 2
+    }
+
+    class InfoScreenPagerAdapter(fm: FragmentManager) : FragmentPagerAdapter(fm) {
+
+        override fun getItem(position: Int): Fragment {
+            return InfoScreenFragment.newInstance(position)
+        }
+
+        override fun getCount(): Int {
+            // TODO: make configurable
+            return 2
+        }
+
+    }
+
+    class InfoScreenFragment : Fragment() {
+
+        companion object {
+
+            private val ARG_SCREEN_ID = "screen_id"
+
+            fun newInstance(id: Int): InfoScreenFragment {
+                val args = Bundle()
+                args.putInt(ARG_SCREEN_ID, id)
+                val fragment = InfoScreenFragment()
+                fragment.arguments = args
+                return fragment
+            }
+        }
+
+        override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
+            val contentLayout: LinearLayout = inflater.inflate(R.layout.content_main, container, false) as LinearLayout
+//            return contentLayout
+
+            val screenId = arguments!!.getInt(ARG_SCREEN_ID)
+
+            // TODO: make configurable
+            val featureLayout: Array<Array<ActivityFeature>> = when(screenId) {
+                0 -> arrayOf(arrayOf(ActivityFeature.TIME_S, ActivityFeature.DISTANCE_KM),
+                        arrayOf(ActivityFeature.SPEED_KMH, ActivityFeature.AVG_SPEED_KMH), //ActivityFeature.ELEVATION_GAIN},
+                        arrayOf(ActivityFeature.ELEVATION_GAIN, ActivityFeature.MAX_SPEED_KMH),
+                        arrayOf(ActivityFeature.HEART_RATE, ActivityFeature.AVG_HEART_RATE),
+                        arrayOf(ActivityFeature.POWER_COMBINED, ActivityFeature.AVG_POWER_COMBINED),
+                        arrayOf(ActivityFeature.CADENCE, ActivityFeature.AVG_CADENCE))
+                1 -> arrayOf(arrayOf(ActivityFeature.DISTANCE_KM_REV, ActivityFeature.SPEED_KMH_REV),
+                        arrayOf(ActivityFeature.MAX_HEART_RATE, ActivityFeature.MAX_POWER_COMBINED),
+                        arrayOf(ActivityFeature.POWER_LEFT, ActivityFeature.POWER_RIGHT))
+                else -> {
+                    TODO("implement this")
+                }
+            }
+            //val contentLayout = findViewById<LinearLayout>(R.id.content_main)
+            val textViews = ArrayList<TextView>()
+            val listeners = DataTableProvider.getTableView(featureLayout, inflater, contentLayout, textViews)
+
+            val recorder = Recorder.getInstance(activity!!.applicationContext)
+            recorder.addDataListeners(listeners)
+
+            return contentLayout
+        }
     }
 
 }

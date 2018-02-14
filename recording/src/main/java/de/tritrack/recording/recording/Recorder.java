@@ -41,7 +41,6 @@ public class Recorder {
     private BleRecorder mBleRecorder;
     private DataStreamer mDataStreamer;
     private StorageManager mStorageManager;
-    private Handler mHandler;
 
     private static Recorder instance = null;
 
@@ -57,33 +56,24 @@ public class Recorder {
         mLocation.config(LocationParams.NAVIGATION);
         mBleRecorder = new BleRecorder(context);
         mDataStreamer = new DataStreamer();
-        mHandler = new Handler();
 //        startPeriodicScanning();
     }
 
     public void startBleScan(BlePool.SensorDeviceScanListener scanListener) {
-        mBleRecorder.startDeviceScan(scanListener);
+        mBleRecorder.startNewDevicesScan(scanListener);
     }
 
     public void stopBleScan() {
-        mBleRecorder.stopDeviceScan();
+        mBleRecorder.stopNewDevicesScan();
     }
 
-    public void setDataListeners(Map<ActivityFeature, UICommunication.UIDataListener> listeners) {
+    public void addDataListeners(Map<ActivityFeature, UICommunication.UIDataListener> listeners) {
         // TODO: add settings switch for auto-pause
 //        addAutoPauseListener(listeners);
-        mDataStreamer.setDataListeners(listeners);
+        mDataStreamer.addDataListeners(listeners);
     }
 
     private void startPeriodicScanning() {
-        // TODO: do we need to stop this at some point?
-        mHandler.post(new Runnable() {
-            @Override
-            public void run() {
-                mBleRecorder.periodicSensorCheck(mDataStreamer);
-                mHandler.postDelayed(this, 2000);
-            }
-        });
     }
 
     private void addAutoPauseListener(Map<ActivityFeature, UICommunication.UIDataListener> listeners) {
@@ -134,7 +124,6 @@ public class Recorder {
             mBleRecorder.stopRecording();
             mStorageManager.stopStoring();
             mDataStreamer.setResumed(false);
-            mHandler.removeCallbacksAndMessages(null);
             return false;
         }
 

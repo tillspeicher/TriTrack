@@ -27,18 +27,14 @@ public class DataTableProvider {
     private static final String TAG = "DataTableProvider";
 
     public static Map<ActivityFeature, UICommunication.UIDataListener> getTableView(
-            ActivityFeature[][] layout, Context context, LinearLayout root, List<TextView> textViews) {
+            ActivityFeature[][] layout, LayoutInflater inflater, LinearLayout root, List<TextView> textViews) {
         Map<ActivityFeature, UICommunication.UIDataListener> listeners = new HashMap<>();
-        LayoutInflater inflater = LayoutInflater.from(context);
-        TableLayout tableView = (TableLayout) inflater.inflate(R.layout.data_table, null)
+        TableLayout tableView = inflater.inflate(R.layout.data_table, null)
                 .findViewById(R.id.table_data);
-//        TableLayout tableView = new TableLayout(context);
         // TODO: always add it at index 0?
         root.addView(tableView, 0);
         for (ActivityFeature[] row : layout) {
-//            TableRow rowView = (TableRow) inflater.inflate(R.layout.data_row, tableView)
-//                    .findViewById(R.id.table_row_data);
-            TableRow rowView = new TableRow(context);
+            TableRow rowView = (TableRow) inflater.inflate(R.layout.data_row, null);// TableRow(context);
             tableView.addView(rowView);
             for (final ActivityFeature feature : row) {
                 View featureView = inflater.inflate(R.layout.data_item, null)

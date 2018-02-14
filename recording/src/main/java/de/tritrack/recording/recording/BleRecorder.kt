@@ -1,12 +1,15 @@
 package de.tritrack.recording.recording
 
 import android.content.Context
+import android.hardware.Sensor
+import android.os.Handler
 import android.util.Log
 
 import com.movisens.smartgattlib.Service
 import com.polidea.rxandroidble.RxBleClient
 import com.polidea.rxandroidble.RxBleConnection
 import com.polidea.rxandroidble.RxBleDevice
+import rx.Observable
 
 import java.util.ArrayList
 import java.util.HashMap
@@ -26,6 +29,7 @@ internal class BleRecorder(context: Context) {
     private var mScanSubscription: Subscription? = null
     private var mServiceSubscription: Subscription? = null
     private val mReadSubscriptions: MutableList<Subscription>
+//    private val mScanHandler: Handler
 
     init {
         // TODO: check this initialization
@@ -36,24 +40,39 @@ internal class BleRecorder(context: Context) {
         // TODO: this should probably only called once
         mBlePool.loadSavedDevices(context, mBleClient!!)
         mReadSubscriptions = ArrayList()
+
+//        mScanHandler = Handler()
+        // TODO: do we need to stop this at some point?
+//        mScanHandler.post({
+//            periodicSensorCheck(streamer);
+//            // TODO: adjust delay dynamically
+//            mScanHandler.postDelayed(this, 2000)
+//        })
     }
 
-    fun startDeviceScan(scanListener: BlePool.SensorDeviceScanListener) {
+    fun startNewDevicesScan(scanListener: BlePool.SensorDeviceScanListener) {
+        // TODO: synchronize pool
         mBlePool.setUiListener(scanListener)
         startBleScanning()
     }
 
-    fun stopDeviceScan() {
+    fun stopNewDevicesScan() {
         stopBleScanning()
         stopServiceDiscovery()
         mBlePool.clearUiListener()
     }
 
-    fun periodicSensorCheck(dataStreamer: DataStreamer) {
-        startBleScanning()
-        mBlePool.disconnectedSavedDevices.forEach { dev -> startServiceDiscovery(dev) }
-        startRecording(dataStreamer)
+    fun terminate() {
+        stopBleScanning()
+        stopServiceDiscovery()
+//        mScanHandler.removeCallbacksAndMessages(null)
     }
+
+//    fun periodicSensorCheck(dataStreamer: DataStreamer) {
+//        startBleScanning()
+//        mBlePool.disconnectedSavedDevices.forEach { dev -> startServiceDiscovery(dev) }
+//        startRecording(dataStreamer)
+//    }
 
     private fun startBleScanning() {
         assert(mScanSubscription == null)
@@ -100,49 +119,79 @@ internal class BleRecorder(context: Context) {
 
     // directly adds inputs, is this ok or can the workflow be improved?
     fun startRecording(streamer: DataStreamer) {
-        stopDeviceScan()
+        stopNewDevicesScan()
+        // TODO: make sure during a recording we do not scan for new devices and do not allow do
+        // activate or deactivate existing ones. Alternatively add functionality to handle
+        // disconnects
         Log.i(TAG, "Start BLE recording")
         for (device in mBlePool.enabledDevices) {
-            Log.i(TAG, "Checking device " + device + " for connection.")
+//            Log.i(TAG, "Checking device " + device + " for connection.")
             if (device.isConnected) {
-                Log.i(TAG, "already connected")
+//                Log.i(TAG, "already connected")
                 continue
             }
-            Log.i(TAG, "connecting")
+//            Log.i(TAG, "connecting")
             // TODO: what happens if a connected device gets disconnected?
-            for (sensFeature in device.supportedFeatures) {
-                startDeviceRecording(device.mRxDevice, sensFeature,
-                        device.getActivityFeatures(sensFeature), streamer)
-            }
+//            for (sensFeature in device.supportedFeatures) {
+//                startDeviceRecording(device.mRxDevice, sensFeature,
+//                        device.getActivityFeatures(sensFeature), streamer)
+//            }
+            startDeviceRecording(device, streamer)
         }
     }
 
-    private fun startDeviceRecording(device: RxBleDevice, sensFeature: SensorFeature,
-                                     activityFeatures: List<ActivityFeature>, streamer: DataStreamer) {
-        Log.i(TAG, "adding listener for feature " + sensFeature)
-        val dataPublishers = ArrayList<PublishSubject<Double>>()
-        for (actFeature in activityFeatures) {
-            if (!streamer.hasInputSource(actFeature))
-            // to avoid adding something like cadence twice
-                dataPublishers.add(streamer.setInput(actFeature, true))
+//    private fun startDeviceRecording(device: RxBleDevice, sensFeature: SensorFeature,
+    private fun startDeviceRecording(device: BlePool.SensorDevice, streamer: DataStreamer) {
+//        Log.i(TAG, "adding listener for feature " + sensFeature)
+
+        val bleConnection = device.mRxDevice.establishConnection(true)
+        for (sensFeature in device.supportedFeatures) {
+            val dataPublishers = device.getActivityFeatures(sensFeature)
+                    .filter{actFeature -> !streamer.hasInputSource(actFeature) }
+                    .map{actFeature ->
+                        streamer.setInput(actFeature, true)
+                    }
+//            val dataPublishers = ArrayList<PublishSubject<Double>>()
+//            for (actFeature in activityFeatures) {
+//                if (!streamer.hasInputSource(actFeature))
+//                // to avoid adding something like cadence twice
+//                    dataPublishers.add(streamer.setInput(actFeature, true))
+//            }
+            val readSubscription = bleConnection.flatMap { rxBleConnection ->
+                rxBleConnection.setupNotification(sensFeature.characteristic) }
+                    .flatMap { observable -> observable }
+                    .subscribe({ characteristicValue ->
+                        val values = sensFeature.readData(characteristicValue)
+                        UICommunication.runOnUiThread(Runnable {
+                            assert(values.size >= dataPublishers.size)
+                            for (i in dataPublishers.indices) {
+                                //Log.i(TAG, "reading value for " + activityFeatures.get(i));
+                                assert(dataPublishers[i] != null)
+
+                                dataPublishers[i].onNext(values[i])
+                            }
+                        })
+                    }) { throwable: Throwable ->
+                        Log.i(TAG, "Error recording from BLE device: " + throwable.toString(), throwable)
+                    }
+            mReadSubscriptions.add(readSubscription)
         }
 
-        val readSubscription = device.establishConnection(false)
-                .flatMap { rxBleConnection -> rxBleConnection.setupNotification(sensFeature.characteristic) }
-                .flatMap { observable -> observable }
-                .subscribe({ characteristicValue ->
-                    val values = sensFeature.readData(characteristicValue)
-                    UICommunication.runOnUiThread(Runnable {
-                        assert(values.size >= dataPublishers.size)
-                        for (i in dataPublishers.indices) {
-                            //Log.i(TAG, "reading value for " + activityFeatures.get(i));
-                            assert(dataPublishers[i] != null)
-
-                            dataPublishers[i].onNext(values[i])
-                        }
-                    })
-                }) { throwable -> Log.i(TAG, "Error recording from BLE device: " + throwable.toString(), throwable) }
-        mReadSubscriptions.add(readSubscription)
+//        val readSubscription = device.establishConnection(true)
+//                .flatMap { rxBleConnection -> rxBleConnection.setupNotification(sensFeature.characteristic) }
+//                .flatMap { observable -> observable }
+//                .subscribe({ characteristicValue ->
+//                    val values = sensFeature.readData(characteristicValue)
+//                    UICommunication.runOnUiThread(Runnable {
+//                        assert(values.size >= dataPublishers.size)
+//                        for (i in dataPublishers.indices) {
+//                            //Log.i(TAG, "reading value for " + activityFeatures.get(i));
+//                            assert(dataPublishers[i] != null)
+//
+//                            dataPublishers[i].onNext(values[i])
+//                        }
+//                    })
+//                }) { throwable -> Log.i(TAG, "Error recording from BLE device: " + throwable.toString(), throwable) }
 
         // TODO: remove subscriptions for disconnected devices
 //        device.observeConnectionStateChanges().subscribe({ state: RxBleConnection.RxBleConnectionState? ->
@@ -199,10 +248,12 @@ internal class BleRecorder(context: Context) {
         private var mBleClient: RxBleClient? = null
 
         private fun convertService(serviceUuid: UUID): SensorFeature {
-            return if (Service.HEART_RATE == serviceUuid)
+            return if (serviceUuid == Service.HEART_RATE)
                 SensorFeature.HEART_RATE
-            else if (Service.CYCLING_POWER == serviceUuid)
+            else if (serviceUuid == Service.CYCLING_POWER)
                 SensorFeature.CYCLING_POWER
+            else if (serviceUuid == Service.CYCLING_SPEED_AND_CADENCE)
+                SensorFeature.CYCLING_SPEED_CADENCE
             else
                 SensorFeature.UNSUPPORTED_FEATURE
         }
@@ -223,6 +274,14 @@ internal class BleRecorder(context: Context) {
                     else
                         activityFeatures.add(ActivityFeature.POWER_COMBINED)
                     // TODO: check whether the sensor supports this
+                    activityFeatures.add(ActivityFeature.CUMULATIVE_CRANK_REVOLUTIONS)
+                    activityFeatures.add(ActivityFeature.LAST_CRANK_EVENT)
+                }
+                SensorFeature.CYCLING_SPEED_CADENCE -> {
+                    activityFeatures.add(ActivityFeature.CUMULATIVE_WHEEL_REVOLUTIONS)
+                    activityFeatures.add(ActivityFeature.LAST_WHEEL_EVENT)
+
+                    // TODO: not always
                     activityFeatures.add(ActivityFeature.CUMULATIVE_CRANK_REVOLUTIONS)
                     activityFeatures.add(ActivityFeature.LAST_CRANK_EVENT)
                 }
