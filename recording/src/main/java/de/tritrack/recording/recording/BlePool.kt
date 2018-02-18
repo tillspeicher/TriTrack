@@ -6,7 +6,9 @@ import android.util.Log
 import com.polidea.rxandroidble.RxBleClient
 import com.polidea.rxandroidble.RxBleConnection
 import com.polidea.rxandroidble.RxBleDevice
+import rx.Subscription
 import java.util.*
+import kotlin.collections.ArrayList
 import kotlin.collections.HashMap
 import kotlin.collections.HashSet
 
@@ -16,89 +18,117 @@ import kotlin.collections.HashSet
 
 object BlePool {
 
-    val TAG = "BlePool"
+    private const val TAG = "BlePool"
 
     // TODO: currently this should only be accessed through the UI Thread but there might
     // be a need at some point to synchronize access to this guy
-    class SensorDevice(var mRxDevice: RxBleDevice,
-                       private val mSensorFeatures: Map<SensorFeature, List<ActivityFeature>>,
-                       enabled: Boolean) {
+    class SensorDevice internal constructor(rxDevice: RxBleDevice,
+                                            sensorFeatures: List<SensorFeature>,
+                                            enabled: Boolean) {
+
+        // TODO: check property handling, can this be simplified?
+        val mRxDevice = rxDevice
+            @Synchronized get
+
+        private val mSensorFeatures = getActivityFeatureMap(sensorFeatures, mRxDevice.name)
 
         var isEnabled = enabled
+            @Synchronized get
+            @Synchronized
             set(value) {
                 field = value
                 updateUi()
-
-                if (value)
-                    mEnabledMacAddresses.add(mRxDevice.macAddress)
-                else
-                    mEnabledMacAddresses.remove(mRxDevice.macAddress)
-                val editor = mDeviceConfigStore?.edit()
-                editor?.putStringSet(KEY_MAC_ADDRESSES, mEnabledMacAddresses)
-                editor?.apply()
+                saveEnabledState(mRxDevice.macAddress, value, mSensorFeatures.keys)
+                // TODO: should disabled, disconnected devices be completely removed?
             }
 
         val name: String
+            @Synchronized
             get() = mRxDevice.name
 
         val supportedFeatures: Set<SensorFeature>
+            @Synchronized
             get() = mSensorFeatures.keys
 
+        @Synchronized
         fun getActivityFeatures(sensorFeature: SensorFeature): List<ActivityFeature> {
             val actFeatures = mSensorFeatures[sensorFeature]
-            if (actFeatures == null)
-                return Collections.emptyList()
-            return actFeatures
+            return actFeatures ?: Collections.emptyList()
         }
 
         val isConnected: Boolean
-            // TODO: what about connecting and disconnecting?
-            get() = mRxDevice.connectionState != RxBleConnection.RxBleConnectionState.DISCONNECTED
+            // TODO: monitor connection changes in UI
+            @Synchronized
+            get() {
+//                Log.i(TAG, "Dev %s connection state: %s".format(name, mRxDevice.connectionState))
+                return mRxDevice.connectionState != RxBleConnection.RxBleConnectionState.DISCONNECTED
+            }
+
     }
 
-    private var DEV_PREFS_NAME = "SavedDevices"
-    private var KEY_MAC_ADDRESSES = "MacAddresses"
+    private const val KEY_DEV_PREFS = "ble_sensor_configuration"
+    private const val KEY_MAC_ADDRESSES = "mac_addresses"
+    private const val KEY_SENSOR_FEATURES_POSTFIX = "_sensor_features"
+
 
     // synchronize access
-    private val mDiscoveredDevices: MutableMap<String, SensorDevice>
+    private val mDevices: MutableMap<String, SensorDevice>
     private var mUiListener: SensorDeviceScanListener? = null
+    private val mConnectionStateSubscriptions = ArrayList<Subscription>()
 
     private var mDeviceConfigStore: SharedPreferences? = null
-    private val mDisconnectedSavedDevices: MutableMap<String, RxBleDevice>
     private val mEnabledMacAddresses: MutableSet<String>
 
     init {
-        mDiscoveredDevices = HashMap()
-        mDisconnectedSavedDevices = HashMap()
+        mDevices = HashMap()
         mEnabledMacAddresses = HashSet()
     }
 
     fun loadSavedDevices(context: Context, bleClient: RxBleClient) {
         if (mDeviceConfigStore != null)
             throw IllegalArgumentException("config store was already set")
-        val configStore = context.getSharedPreferences(DEV_PREFS_NAME, 0)
-        mDeviceConfigStore = configStore
-        mEnabledMacAddresses.addAll(configStore.getStringSet(KEY_MAC_ADDRESSES, HashSet()))
-        mEnabledMacAddresses.forEach ({ macAddr -> mDisconnectedSavedDevices.put(macAddr, bleClient.getBleDevice(macAddr)) })
-        mEnabledMacAddresses.forEach({
-            macAddr -> Log.i(TAG, "Loaded stored BLE device " + mDisconnectedSavedDevices[macAddr])
+        // TODO
+        mDeviceConfigStore = context.getSharedPreferences(KEY_DEV_PREFS, Context.MODE_PRIVATE)
+
+        mEnabledMacAddresses.addAll(mDeviceConfigStore!!.getStringSet(KEY_MAC_ADDRESSES, HashSet()))
+        mEnabledMacAddresses.forEach({ macAddr ->
+            val sensorFeatures = mDeviceConfigStore!!
+                    .getStringSet(macAddr + KEY_SENSOR_FEATURES_POSTFIX, HashSet())
+                    .map { featureName -> SensorFeature.valueOf(featureName) }
+            val sensorDevice = SensorDevice(bleClient.getBleDevice(macAddr),
+                    sensorFeatures, true)
+            mDevices[macAddr] = sensorDevice
+
+            Log.i(TAG, "Loaded stored BLE device " + sensorDevice)
         })
     }
 
     fun setUiListener(uiListener: SensorDeviceScanListener) {
+        assert(mUiListener == null)
+        assert(mConnectionStateSubscriptions.isEmpty())
+
         mUiListener = uiListener
         updateUi()
+
+        // TODO: reconnect if device connections get interruped
+        // TODO: enable showing the device connection state while scanning
+//        mConnectionStateSubscriptions.addAll(mDevices.values.map{ dev ->
+//            dev.mRxDevice.observeConnectionStateChanges().subscribe({connectionState ->
+//                // TODO: find better way than updating the complete list
+//                uiListener.resultAvailable(ArrayList(mDevices.values))
+//            })
+//        })
     }
 
     fun clearUiListener() {
         mUiListener = null
+//        mConnectionStateSubscriptions.forEach({ subscription -> subscription.unsubscribe() })
+//        mConnectionStateSubscriptions.clear()
     }
 
     @Synchronized
     fun probeDevice(rxDevice: RxBleDevice): Boolean {
-        // TODO: store connected Mac addresses and autoconnect
-        return mDiscoveredDevices.containsKey(rxDevice.macAddress)
-        // TODO: update device timestamps
+        return mDevices.containsKey(rxDevice.macAddress)
     }
 
     /**
@@ -108,30 +138,58 @@ object BlePool {
      */
     @Synchronized
     fun addSensorDevice(device: RxBleDevice,
-                     sensorFeatures: Map<SensorFeature, List<ActivityFeature>>) {
-        assert(!mDiscoveredDevices.containsKey(device.macAddress))
+                     sensorFeatures: List<SensorFeature>) {
+        assert(!mDevices.containsKey(device.macAddress))
 
-        val enabled = mDisconnectedSavedDevices.remove(device.macAddress) != null
-        val bleDevice = SensorDevice(device, sensorFeatures, enabled)
-        mDiscoveredDevices.put(device.macAddress, bleDevice)
+        val bleDevice = SensorDevice(device, sensorFeatures, false)
+        mDevices[device.macAddress] = bleDevice
         updateUi()
         // TODO: when to remove devices? if the get selected for connection, go out of range, etc.
     }
 
-    val disconnectedSavedDevices: Collection<RxBleDevice>
-        get() = mDisconnectedSavedDevices.values
-
     val enabledDevices: List<SensorDevice>
         @Synchronized get() {
-            return ArrayList<SensorDevice>(mDiscoveredDevices.values.filter{ dev -> dev.isEnabled })
+            return ArrayList<SensorDevice>(mDevices.values.filter{ dev -> dev.isEnabled })
         }
 
-    fun updateUi() {
-        UICommunication.runOnUiThread(Runnable { mUiListener!!.resultAvailable(ArrayList(mDiscoveredDevices.values)) })
+    interface SensorDeviceScanListener {
+        // TODO: try to not update the entire list, just the devices that changed
+        fun resultAvailable(devices: List<BlePool.SensorDevice>)
     }
 
-    interface SensorDeviceScanListener {
-        fun resultAvailable(devices: List<BlePool.SensorDevice>)
+
+    private fun updateUi() {
+        UICommunication.runOnUiThread(Runnable { mUiListener!!.resultAvailable(ArrayList(mDevices.values)) })
+    }
+
+    @Synchronized
+    private fun saveEnabledState(macAddress: String, isEnabled: Boolean,
+                                 sensorFeatures: Set<SensorFeature>) {
+        if (isEnabled)
+            assert(mEnabledMacAddresses.add(macAddress))
+        else
+            assert(mEnabledMacAddresses.remove(macAddress))
+
+        with (mDeviceConfigStore!!.edit()) {
+            putStringSet(KEY_MAC_ADDRESSES, mEnabledMacAddresses)
+
+            val sensorFeatureKey = macAddress + KEY_SENSOR_FEATURES_POSTFIX
+            if (isEnabled)
+                putStringSet(sensorFeatureKey,
+                        HashSet(sensorFeatures.map { sf -> sf.name }))
+            else
+                remove(sensorFeatureKey)
+
+            commit()
+        }
+    }
+
+    private fun getActivityFeatureMap(sensFeatures: List<SensorFeature>, devName: String):
+            Map<SensorFeature, List<ActivityFeature>> {
+        val activityFeatures = HashMap<SensorFeature, List<ActivityFeature>>()
+        sensFeatures.forEach({ sf -> activityFeatures.put(sf,
+                SensorFeature.getActivityFeatures(sf, devName)) })
+        return activityFeatures
     }
 
 }

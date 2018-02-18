@@ -3,6 +3,7 @@ package de.tritrack.recording.recording
 import android.util.Log
 
 import com.movisens.smartgattlib.Characteristic
+import com.movisens.smartgattlib.Service
 import com.movisens.smartgattlib.characteristics.HeartRateMeasurement
 import com.movisens.smartgattlib.characteristics.CyclingSpeedCadenceMeasurement
 
@@ -60,6 +61,51 @@ enum class SensorFeature private constructor(val characteristic: UUID, private v
 
     fun readData(data: ByteArray): List<Double> {
         return mReader.call(data)
+    }
+
+    companion object {
+
+        fun fromUuid(serviceUuid: UUID): SensorFeature {
+            return if (serviceUuid == Service.HEART_RATE)
+                SensorFeature.HEART_RATE
+            else if (serviceUuid == Service.CYCLING_POWER)
+                SensorFeature.CYCLING_POWER
+            else if (serviceUuid == Service.CYCLING_SPEED_AND_CADENCE)
+                SensorFeature.CYCLING_SPEED_CADENCE
+            else
+                SensorFeature.UNSUPPORTED_FEATURE
+        }
+
+        fun getActivityFeatures(sensFeature: SensorFeature, devName: String): List<ActivityFeature> {
+            // TODO: don't use device name, use the service feature
+            val activityFeatures = ArrayList<ActivityFeature>()
+            when (sensFeature) {
+                SensorFeature.HEART_RATE -> {
+                    activityFeatures.add(ActivityFeature.HEART_RATE)
+                }
+                SensorFeature.CYCLING_POWER -> {
+                    // TODO: find a better way than this
+                    if (devName.endsWith("L"))
+                        activityFeatures.add(ActivityFeature.POWER_LEFT)
+                    else if (devName.endsWith("R"))
+                        activityFeatures.add(ActivityFeature.POWER_RIGHT)
+                    else
+                        activityFeatures.add(ActivityFeature.POWER_COMBINED)
+                    // TODO: check whether the sensor supports this
+                    activityFeatures.add(ActivityFeature.CUMULATIVE_CRANK_REVOLUTIONS)
+                    activityFeatures.add(ActivityFeature.LAST_CRANK_EVENT)
+                }
+                SensorFeature.CYCLING_SPEED_CADENCE -> {
+                    activityFeatures.add(ActivityFeature.CUMULATIVE_WHEEL_REVOLUTIONS)
+                    activityFeatures.add(ActivityFeature.LAST_WHEEL_EVENT)
+
+                    // TODO: not always
+                    activityFeatures.add(ActivityFeature.CUMULATIVE_CRANK_REVOLUTIONS)
+                    activityFeatures.add(ActivityFeature.LAST_CRANK_EVENT)
+                }
+            }
+            return activityFeatures
+        }
     }
 
 }

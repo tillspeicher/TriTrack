@@ -59,7 +59,6 @@ internal class BleRecorder(context: Context) {
     fun stopNewDevicesScan() {
         stopBleScanning()
         stopServiceDiscovery()
-        mBlePool.clearUiListener()
     }
 
     fun terminate() {
@@ -98,15 +97,13 @@ internal class BleRecorder(context: Context) {
                     val services = rxBleDeviceServices.bluetoothGattServices
                     // TODO: check if a device for this service is already connected
                     // TODO: do not connect to the same device twice
-                    val sensorFeatures = HashMap<SensorFeature, List<ActivityFeature>>()
+                    val sensorFeatures = ArrayList<SensorFeature>()
                     for (service in services) {
                         val serviceUuid = service.uuid
-                        val feature = convertService(serviceUuid)
+                        val feature = SensorFeature.fromUuid(serviceUuid)
                         Log.i(TAG, "device has feature " + feature)
                         if (feature !== SensorFeature.UNSUPPORTED_FEATURE) {
-                            val activityFeatures = getActivityFeatures(feature,
-                                    device.name)
-                            sensorFeatures.put(feature, activityFeatures)
+                            sensorFeatures.add(feature)
                         }
                     }
                     if (!sensorFeatures.isEmpty()) {
@@ -247,47 +244,6 @@ internal class BleRecorder(context: Context) {
 
         private var mBleClient: RxBleClient? = null
 
-        private fun convertService(serviceUuid: UUID): SensorFeature {
-            return if (serviceUuid == Service.HEART_RATE)
-                SensorFeature.HEART_RATE
-            else if (serviceUuid == Service.CYCLING_POWER)
-                SensorFeature.CYCLING_POWER
-            else if (serviceUuid == Service.CYCLING_SPEED_AND_CADENCE)
-                SensorFeature.CYCLING_SPEED_CADENCE
-            else
-                SensorFeature.UNSUPPORTED_FEATURE
-        }
-
-        private fun getActivityFeatures(sensFeature: SensorFeature, devName: String): List<ActivityFeature> {
-            // TODO: don't use device name, use the service feature
-            val activityFeatures = ArrayList<ActivityFeature>()
-            when (sensFeature) {
-                SensorFeature.HEART_RATE -> {
-                    activityFeatures.add(ActivityFeature.HEART_RATE)
-                }
-                SensorFeature.CYCLING_POWER -> {
-                    // TODO: find a better way than this
-                    if (devName.endsWith("L"))
-                        activityFeatures.add(ActivityFeature.POWER_LEFT)
-                    else if (devName.endsWith("R"))
-                        activityFeatures.add(ActivityFeature.POWER_RIGHT)
-                    else
-                        activityFeatures.add(ActivityFeature.POWER_COMBINED)
-                    // TODO: check whether the sensor supports this
-                    activityFeatures.add(ActivityFeature.CUMULATIVE_CRANK_REVOLUTIONS)
-                    activityFeatures.add(ActivityFeature.LAST_CRANK_EVENT)
-                }
-                SensorFeature.CYCLING_SPEED_CADENCE -> {
-                    activityFeatures.add(ActivityFeature.CUMULATIVE_WHEEL_REVOLUTIONS)
-                    activityFeatures.add(ActivityFeature.LAST_WHEEL_EVENT)
-
-                    // TODO: not always
-                    activityFeatures.add(ActivityFeature.CUMULATIVE_CRANK_REVOLUTIONS)
-                    activityFeatures.add(ActivityFeature.LAST_CRANK_EVENT)
-                }
-            }
-            return activityFeatures
-        }
     }
 
 }

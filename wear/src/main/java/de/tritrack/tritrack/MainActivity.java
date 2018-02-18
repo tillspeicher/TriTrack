@@ -56,7 +56,7 @@ public class MainActivity extends WearableActivity {
         LinearLayout contentLayout = (LinearLayout) findViewById(R.id.content_main);
         mTextViews = new ArrayList<>();
         Map<ActivityFeature, UICommunication.UIDataListener> listeners =
-                DataTableProvider.getTableView(featureLayout, this, contentLayout, mTextViews);
+                DataTableProvider.INSTANCE.getTableView(featureLayout, this, contentLayout, mTextViews);
         mRec.setDataListeners(listeners);
 
         mStartStopButton = (ImageButton) findViewById(R.id.button_start_stop);
