@@ -1,5 +1,6 @@
 package de.tritrack.recording.recording
 
+import android.content.ContentValues.TAG
 import android.content.Context
 import android.hardware.Sensor
 import android.os.Handler
@@ -157,6 +158,8 @@ internal class BleRecorder(context: Context) {
             val readSubscription = bleConnection.flatMap { rxBleConnection ->
                 rxBleConnection.setupNotification(sensFeature.characteristic) }
                     .flatMap { observable -> observable }
+                    // TODO: check if the retry overhead can be limited
+                    .retry()
                     .subscribe({ characteristicValue ->
                         val values = sensFeature.readData(characteristicValue)
                         UICommunication.runOnUiThread(Runnable {
@@ -171,24 +174,11 @@ internal class BleRecorder(context: Context) {
                     }) { throwable: Throwable ->
                         Log.i(TAG, "Error recording from BLE device: " + throwable.toString(), throwable)
                     }
+
             mReadSubscriptions.add(readSubscription)
         }
 
-//        val readSubscription = device.establishConnection(true)
-//                .flatMap { rxBleConnection -> rxBleConnection.setupNotification(sensFeature.characteristic) }
-//                .flatMap { observable -> observable }
-//                .subscribe({ characteristicValue ->
-//                    val values = sensFeature.readData(characteristicValue)
-//                    UICommunication.runOnUiThread(Runnable {
-//                        assert(values.size >= dataPublishers.size)
-//                        for (i in dataPublishers.indices) {
-//                            //Log.i(TAG, "reading value for " + activityFeatures.get(i));
-//                            assert(dataPublishers[i] != null)
-//
-//                            dataPublishers[i].onNext(values[i])
-//                        }
-//                    })
-//                }) { throwable -> Log.i(TAG, "Error recording from BLE device: " + throwable.toString(), throwable) }
+
 
         // TODO: remove subscriptions for disconnected devices
 //        device.observeConnectionStateChanges().subscribe({ state: RxBleConnection.RxBleConnectionState? ->
