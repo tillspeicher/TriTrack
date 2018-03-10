@@ -106,10 +106,13 @@ internal class DataStreamer {
 
     fun setInput(feature: ActivityFeature,
                  logFeature: Boolean): PublishSubject<Double> {
-        //        if (mProviders.containsKey(feature))
-        //            throw new IllegalArgumentException("Cannot add source of feature " + feature + " twice.");
         Log.i(TAG, "adding source for feature " + feature)
 
+        // TODO: this way all inputs are produced using the same PublishSubject, maybe use different
+        // ones for every input source and decide based on priority and availability which source
+        // to use at any given time
+        // TODO: in case no inputs are produced for some time or all input sources are unavailable/
+        // disconnected, 0 or some other default values should be produced
         var inSubject: PublishSubject<Double>? = mInputs[feature]
         if (inSubject == null) {
             inSubject = PublishSubject.create()
@@ -137,17 +140,16 @@ internal class DataStreamer {
         val inObservables = ArrayList<Observable<Double>>()
         for (depFeature in dependingFeatures) {
             val inObs = mProviders[depFeature]
-            if (inObs != null) {
+            if (inObs != null)
                 //inObservables.add(inObs.onBackpressureLatest());
                 // TODO: use the last one
                 inObservables.add(inObs)
-                continue
-            }
-            throw IllegalArgumentException("No provider for feature $depFeature available.")
+            else
+                throw IllegalArgumentException("No provider for feature $depFeature available.")
         }
 
-        val resObs: Observable<Double>
-        resObs = Observable.zip(inObservables, Function { values ->
+//        resObs = Observable.zip(inObservables, Function { values ->
+        val resObs: Observable<Double> = Observable.combineLatest(inObservables, Function { values ->
             try {
                 val doubleVals = Array<Double>(values.size, { pos -> values[pos] as Double })
                 return@Function op.apply(doubleVals)
@@ -307,8 +309,6 @@ internal class DataStreamer {
                     return gain
                 }
             }, false)
-            ActivityFeature.CUMULATIVE_WHEEL_REVOLUTIONS -> {
-            }
             ActivityFeature.LAST_WHEEL_EVENT -> {
                 val wheel_circumference = 2.76 // TODO: check, make configurable
                 addOperator(arrayOf(ActivityFeature.CUMULATIVE_WHEEL_REVOLUTIONS,
@@ -321,8 +321,6 @@ internal class DataStreamer {
                 addOperator(arrayOf(ActivityFeature.CUMULATIVE_WHEEL_REVOLUTIONS,
                         ActivityFeature.LAST_WHEEL_EVENT), ActivityFeature.SPEED_KMH_REV,
                         EventPerMinOperator(wheel_circumference * 0.06), false)
-            }
-            ActivityFeature.CUMULATIVE_CRANK_REVOLUTIONS -> {
             }
             ActivityFeature.LAST_CRANK_EVENT -> addOperator(arrayOf(
                     ActivityFeature.CUMULATIVE_CRANK_REVOLUTIONS, ActivityFeature.LAST_CRANK_EVENT),
