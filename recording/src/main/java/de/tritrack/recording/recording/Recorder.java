@@ -2,10 +2,7 @@ package de.tritrack.recording.recording;
 
 import android.content.Context;
 import android.location.Location;
-import android.os.Handler;
-import android.util.Log;
 
-import java.util.List;
 import java.util.Map;
 
 import io.nlopez.smartlocation.OnLocationUpdatedListener;
@@ -13,7 +10,7 @@ import io.nlopez.smartlocation.SmartLocation;
 import io.nlopez.smartlocation.location.config.LocationParams;
 import io.nlopez.smartlocation.location.providers.LocationGooglePlayServicesWithFallbackProvider;
 
-import rx.subjects.PublishSubject;
+import io.reactivex.subjects.PublishSubject;
 
 /**
  * Created by till on 22.12.16.
@@ -56,7 +53,6 @@ public class Recorder {
         mLocation.config(LocationParams.NAVIGATION);
         mBleRecorder = new BleRecorder(context);
         mDataStreamer = new DataStreamer();
-//        startPeriodicScanning();
     }
 
     public void startBleScan(BlePool.SensorDeviceScanListener scanListener) {
@@ -71,9 +67,6 @@ public class Recorder {
         // TODO: add settings switch for auto-pause
 //        addAutoPauseListener(listeners);
         mDataStreamer.addDataListeners(listeners);
-    }
-
-    private void startPeriodicScanning() {
     }
 
     private void addAutoPauseListener(Map<ActivityFeature, UICommunication.UIDataListener> listeners) {

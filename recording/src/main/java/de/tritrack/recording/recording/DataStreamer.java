@@ -10,11 +10,18 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import rx.Observable;
-import rx.Observer;
-import rx.functions.Func1;
-import rx.functions.FuncN;
-import rx.subjects.PublishSubject;
+//import rx.Observable;
+//import rx.Observer;
+//import rx.functions.Function;
+//import rx.functions.FuncN;
+//import rx.subjects.PublishSubject;
+
+import io.reactivex.Observable;
+import io.reactivex.Observer;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.functions.Function;
+import io.reactivex.functions.Function;
+import io.reactivex.subjects.PublishSubject;
 
 /**
  * Created by till on 03.06.17.
@@ -115,9 +122,9 @@ class DataStreamer {
         if (inSubject == null) {
             inSubject = PublishSubject.create();
             mInputs.put(feature, inSubject);
-            Observable<Double> obs = inSubject.map(new Func1<Double, Double>() {
+            Observable<Double> obs = inSubject.map(new Function<Double, Double>() {
                 @Override
-                public Double call(Double val) {
+                public Double apply(Double val) {
                     return val;
                 }
             });
@@ -143,39 +150,27 @@ class DataStreamer {
         for (ActivityFeature depFeature : dependingFeatures) {
             Observable inObs = mProviders.get(depFeature);
             if (inObs != null) {
-                inObservables.add(inObs.onBackpressureLatest());
-                //inObservables.add(inObs);
+                //inObservables.add(inObs.onBackpressureLatest());
+                // TODO: use the last one
+                inObservables.add(inObs);
                 continue;
             }
             throw new IllegalArgumentException("No provider for feature " + depFeature + " available.");
         }
 
         Observable<Double> resObs;
-        if (inObservables.size() > 1) {
-            // TODO: is it better to use double[] instead of Double[]?
-            // TODO: is zip() with drops from the sources in case of backpressure the right thing?
-            resObs = Observable.zip(inObservables, new FuncN<Double[]>() {
-                //        Observable<Double> resObs = Observable.combineLatest(inObservables, new FuncN<Double[]>() {
-                @Override
-                public Double[] call(Object[] args) {
-                    //return Arrays.copyOf(args, args.length, Double[].class);
-                    Double[] res = new Double[args.length];
-                    int i = 0;
-                    for (Object val : args) {
-                        res[i++] = (double) val;
-                    }
-                    return res;
+        resObs = Observable.zip(inObservables, new Function<Object[], Double>() {
+            @Override
+            public Double apply(Object[] objects) {
+                try {
+                    return op.apply((Double[]) objects);
+                } catch (Exception e) {
+                    // TODO: catching all exceptions is problematic
+                    Log.e(TAG, e.getMessage());
+                    return 0.;
                 }
-            }).map(op);
-        } else {
-            // TODO: can this indirection be avoided?
-            resObs = inObservables.get(0).map(new Func1<Double, Double>() {
-                @Override
-                public Double call(Double val) {
-                    return op.call(new Double[]{val});
-                }
-            });
-        }
+            }
+        });
         addUiObserver(resFeature, resObs);
         if (logFeature) {
             mStorageManager.addFeature(resFeature);
@@ -204,9 +199,9 @@ class DataStreamer {
                     break;
                 // TODO: the time correspondence of the values should be checked
                 addOperator(new ActivityFeature[]{ActivityFeature.POWER_LEFT, ActivityFeature.POWER_RIGHT},
-                        ActivityFeature.POWER_COMBINED, new Operator() {//new Func1<Double[], Double>() {
+                        ActivityFeature.POWER_COMBINED, new Operator() {//new Function<Double[], Double>() {
                             @Override
-                            public Double call(Double[] vals) {
+                            public Double apply(Double[] vals) {
                                 Double value = Double.valueOf(vals[0] + vals[1]);
                                 return value;
                             }
@@ -229,7 +224,7 @@ class DataStreamer {
                             Double lastLat = null, lastLong = null;
                             double dist = 0.0;
                             @Override
-                            public Double call(Double[] vals) {
+                            public Double apply(Double[] vals) {
                                 double curLat = vals[0];
                                 double curLong = vals[1];
                                 if (lastLat == null) {
@@ -254,7 +249,7 @@ class DataStreamer {
                             Double lastDist = 0.;
 
                             @Override
-                            public Double call(Double[] vals) {
+                            public Double apply(Double[] vals) {
                                 if (!mIsResumed) {
                                     lastDist = null;
                                     return totalDist;
@@ -273,7 +268,7 @@ class DataStreamer {
                             // case the GPS connection breaks?
                             Double lastDist = null;
                             @Override
-                            public Double call(Double[] vals) {
+                            public Double apply(Double[] vals) {
                                 double timeDiff = timeCheckpoint(true);
                                 double distM = vals[0];
                                 if (lastDist == null || timeDiff <= 0.) {
@@ -290,7 +285,7 @@ class DataStreamer {
                 addOperator(new ActivityFeature[]{ActivityFeature.DISTANCE_M},
                         ActivityFeature.DISTANCE_KM, new Operator() {
                             @Override
-                            public Double call(Double[] vals) {
+                            public Double apply(Double[] vals) {
                                 return vals[0] / 1000.0;
                             }
                         }, false);
@@ -299,7 +294,7 @@ class DataStreamer {
                 addOperator(new ActivityFeature[]{ActivityFeature.SPEED_MS},
                         ActivityFeature.SPEED_KMH, new Operator() {
                             @Override
-                            public Double call(Double[] speedMs) {
+                            public Double apply(Double[] speedMs) {
                                 double val = speedMs[0] * 3.6;
                                 return val;
                             }
@@ -307,7 +302,7 @@ class DataStreamer {
                 addOperator(new ActivityFeature[]{ActivityFeature.SPEED_MS},
                         ActivityFeature.PACE, new Operator() {
                             @Override
-                            public Double call(Double[] vals) {
+                            public Double apply(Double[] vals) {
                                 double speed = vals[0];
                                 if (speed == 0.)
                                     return 0.;
@@ -327,11 +322,11 @@ class DataStreamer {
                 break;
             case ALTITUDE:
                 addOperator(new ActivityFeature[]{ActivityFeature.ALTITUDE},
-                        ActivityFeature.ELEVATION_GAIN, new Operator() {//new Func1<Double[], Double>() {
+                        ActivityFeature.ELEVATION_GAIN, new Operator() {//new Function<Double[], Double>() {
                             double gain = 0.0;
                             Double lastAltitude = null;
                             @Override
-                            public Double call(Double[] value) {
+                            public Double apply(Double[] value) {
                                 if (!mIsResumed) {
                                     lastAltitude = null;
                                     return gain;
@@ -353,7 +348,7 @@ class DataStreamer {
                                 ActivityFeature.LAST_WHEEL_EVENT}, ActivityFeature.DISTANCE_KM_REV,
                         new Operator() {
                             @Override
-                            public Double call(Double[] vals) {
+                            public Double apply(Double[] vals) {
                                 return vals[0] * wheel_circumference / 1000;
                             }
                         }, false);
@@ -384,6 +379,9 @@ class DataStreamer {
         }
         obs.subscribe(new Observer<Double>() {
             @Override
+            public void onSubscribe(Disposable d) {}
+
+            @Override
             public void onNext(Double val) {
                 listener.onFeatureChanged(val);
             }
@@ -394,7 +392,7 @@ class DataStreamer {
             }
 
             @Override
-            public void onCompleted() {
+            public void onComplete() {
                 Log.i(TAG, "Completed UI updating");
             }
         });
@@ -402,6 +400,9 @@ class DataStreamer {
 
     private void addLoggingObserver(final ActivityFeature feature, Observable<Double> obs) {
         obs.subscribe(new Observer<Double>() {
+            @Override
+            public void onSubscribe(Disposable d) {}
+
             @Override
             public void onNext(Double val) {
                 //Log.i(TAG, "receiving value for " + feature + " for logging: " + val);
@@ -414,13 +415,13 @@ class DataStreamer {
             }
 
             @Override
-            public void onCompleted() {
+            public void onComplete() {
                 Log.i(TAG, "Completed logging subscription");
             }
         });
     }
 
-    private abstract class Operator implements Func1<Double[], Double> {
+    private abstract class Operator implements Function<Double[], Double> {
     }
 
     private abstract class TimedOperator extends Operator {
@@ -450,7 +451,7 @@ class DataStreamer {
         Double lastAvg = null;
 
         @Override
-        public Double call(Double[] vals) {
+        public Double apply(Double[] vals) {
             double timeDiff = timeCheckpoint(false);
             if (timeDiff < 0.) {
                 return lastAvg == null ? 0.0 : lastAvg;
@@ -467,10 +468,10 @@ class DataStreamer {
         }
     }
 
-    private class MaxOperator extends Operator {//implements Func1<Double[], Double> {
+    private class MaxOperator extends Operator {//implements Function<Double[], Double> {
         Double maxVal = null;
         @Override
-        public Double call(Double[] vals) {
+        public Double apply(Double[] vals) {
             if (!mIsResumed)
                 return maxVal == null ? 0.0 : maxVal;
             Double val = vals[0];
@@ -492,7 +493,7 @@ class DataStreamer {
         }
 
         @Override
-        public Double call(Double[] doubles) {
+        public Double apply(Double[] doubles) {
             double revolutions = doubles[0];
             double time = doubles[1];
             if (lastTime == null) {
