@@ -6,9 +6,11 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.support.design.widget.FloatingActionButton
+import android.support.design.widget.NavigationView
 import android.support.v4.app.*
 import android.support.v4.content.ContextCompat
 import android.support.v4.view.ViewPager
+import android.support.v4.widget.DrawerLayout
 import android.support.v7.app.AppCompatActivity
 import android.support.v7.widget.Toolbar
 import android.view.*
@@ -38,6 +40,22 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         val toolbar = findViewById<Toolbar>(R.id.toolbar)
         setSupportActionBar(toolbar)
+
+        val navigationView = findViewById<NavigationView>(R.id.main_drawer)
+        navigationView!!.setNavigationItemSelectedListener {
+            it.setChecked(true)
+            when (it.itemId) {
+                R.id.action_settings -> true
+                R.id.action_ble_device_selection -> {
+                    val bleDeviceSelectionIntent = Intent(this, BleDeviceSelectionActivity::class.java)
+                    startActivity(bleDeviceSelectionIntent)
+                }
+                R.id.action_end_app -> {
+                    finish()
+                }
+            }
+            true
+        }
 
         mRec = Recorder.getInstance(applicationContext)
 //        val featureLayout = arrayOf(arrayOf(ActivityFeature.TIME_S, ActivityFeature.DISTANCE_KM), arrayOf(ActivityFeature.SPEED_KMH, ActivityFeature.AVG_SPEED_KMH), //ActivityFeature.ELEVATION_GAIN},
@@ -215,7 +233,8 @@ class MainActivity : AppCompatActivity() {
                         arrayOf(ActivityFeature.CADENCE, ActivityFeature.AVG_CADENCE))
                 1 -> arrayOf(arrayOf(ActivityFeature.DISTANCE_KM_REV, ActivityFeature.SPEED_KMH_REV),
                         arrayOf(ActivityFeature.MAX_HEART_RATE, ActivityFeature.MAX_POWER_COMBINED),
-                        arrayOf(ActivityFeature.POWER_LEFT, ActivityFeature.POWER_RIGHT))
+                        arrayOf(ActivityFeature.POWER_LEFT, ActivityFeature.POWER_RIGHT),
+                        arrayOf(ActivityFeature.AVG_NORM_POWER, ActivityFeature.AVG_NORM_CADENCE))
                 else -> {
                     TODO("implement this")
                 }

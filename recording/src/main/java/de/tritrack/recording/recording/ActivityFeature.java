@@ -47,7 +47,10 @@ public enum ActivityFeature {
     CUMULATIVE_CRANK_REVOLUTIONS ("Cumulative Crank Revolutions", "#", new DecimalFormat("#")),
     LAST_CRANK_EVENT ("Last Crank Event", "1/1024s", new DecimalFormat("#")),
     CADENCE ("Cadence", "rpm", new DecimalFormat("#")),
-    AVG_CADENCE ("Avg Cadence", "rpm", new DecimalFormat("#"));
+    AVG_CADENCE ("Avg Cadence", "rpm", new DecimalFormat("#")),
+    AVG_NORM_POWER("Avg Power (norm)", "W", new DecimalFormat("#")),
+    AVG_NORM_CADENCE("Avg Cadence (norm)", "rpm", new DecimalFormat("#")),
+    SMOOTH_POWER("Power (3s)", "W", new DecimalFormat("#.#"));
 
     private final String mDescription;
     private final String mUnit;

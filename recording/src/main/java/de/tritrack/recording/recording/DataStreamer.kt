@@ -62,6 +62,7 @@ internal class DataStreamer {
 
     fun addDataListeners(listeners: Map<ActivityFeature, UICommunication.UIDataListener>) {
         Log.i(TAG, "Settiong data listeners")
+//        mDataListeners.clear()
         mDataListeners.putAll(listeners)
     }
 
@@ -119,10 +120,11 @@ internal class DataStreamer {
             mInputs[feature] = inSubject
             val obs = inSubject!!.map({v -> v})
             addUiObserver(feature, obs)
-            if (logFeature) {
-                mStorageManager!!.addFeature(feature)
-                addLoggingObserver(feature, obs)
-            }
+            // TODO: add logging back in
+//            if (logFeature) {
+//                mStorageManager!!.addFeature(feature)
+//                addLoggingObserver(feature, obs)
+//            }
             mProviders[feature] = obs
             checkDependantOperators(feature)
         }
@@ -160,10 +162,11 @@ internal class DataStreamer {
             }
         })
         addUiObserver(resFeature, resObs)
-        if (logFeature) {
-            mStorageManager!!.addFeature(resFeature)
-            addLoggingObserver(resFeature, resObs)
-        }
+        // TODO: add logging back in
+//        if (logFeature) {
+//            mStorageManager!!.addFeature(resFeature)
+//            addLoggingObserver(resFeature, resObs)
+//        }
 
         mProviders[resFeature] = resObs
         mOperators.add(op)
@@ -196,6 +199,10 @@ internal class DataStreamer {
                         ActivityFeature.AVG_POWER_COMBINED, TimeAvgOperator(), false)
                 addOperator(arrayOf(ActivityFeature.POWER_COMBINED),
                         ActivityFeature.MAX_POWER_COMBINED, MaxOperator(), false)
+                addOperator(arrayOf(ActivityFeature.POWER_COMBINED),
+                        ActivityFeature.AVG_NORM_POWER, TimeAvgOperator(true), false)
+//                addOperator(arrayOf(ActivityFeature.POWER_COMBINED), ActivityFeature.SMOOTH_POWER,
+//                        , false)
             }
             ActivityFeature.LATITUDE, ActivityFeature.LONGITUDE -> {
                 if (!mProviders.containsKey(ActivityFeature.LONGITUDE) ||
@@ -326,8 +333,12 @@ internal class DataStreamer {
                     ActivityFeature.CUMULATIVE_CRANK_REVOLUTIONS, ActivityFeature.LAST_CRANK_EVENT),
                     ActivityFeature.CADENCE,
                     EventPerMinOperator(1.0), true)
-            ActivityFeature.CADENCE -> addOperator(arrayOf(ActivityFeature.CADENCE),
-                    ActivityFeature.AVG_CADENCE, TimeAvgOperator(), false)
+            ActivityFeature.CADENCE -> {
+                addOperator(arrayOf(ActivityFeature.CADENCE),
+                        ActivityFeature.AVG_CADENCE, TimeAvgOperator(), false)
+                addOperator(arrayOf(ActivityFeature.CADENCE),
+                        ActivityFeature.AVG_NORM_CADENCE, TimeAvgOperator(true), false)
+            }
         }
     }
 
@@ -378,7 +389,7 @@ internal class DataStreamer {
     private abstract inner class Operator : Function<Array<Double>, Double>
 
     private abstract inner class TimedOperator : Operator() {
-        private var lastTimeMs: Long = -1
+        protected var lastTimeMs: Long = -1
 
         internal fun timeCheckpoint(ignoreResumes: Boolean): Double {
             if (!ignoreResumes && !mIsResumed) {
@@ -400,13 +411,22 @@ internal class DataStreamer {
 
     }
 
-    private inner class TimeAvgOperator : TimedOperator() {
+    private inner class TimeAvgOperator(val normalized: Boolean) : TimedOperator() {
+        constructor(): this(false)
+
         private var lastAvg = -1.0
 
         override fun apply(vals: Array<Double>): Double {
             val timeDiff = timeCheckpoint(false)
             if (timeDiff < 0)
                 return if (lastAvg < 0) 0.0 else lastAvg
+
+            // TODO: refine this condition
+            if (normalized && vals[0] < 1) {
+                // below activation threshold
+                lastTimeMs = SystemClock.elapsedRealtime()
+                return lastAvg
+            }
 
             val totalTime = totalTime
             val curVal = vals[0]

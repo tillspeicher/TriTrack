@@ -23,6 +23,7 @@ object BlePool {
     // TODO: currently this should only be accessed through the UI Thread but there might
     // be a need at some point to synchronize access to this guy
     class SensorDevice internal constructor(rxDevice: RxBleDevice,
+                                            name: String,
                                             sensorFeatures: List<SensorFeature>,
                                             enabled: Boolean) {
 
@@ -30,7 +31,9 @@ object BlePool {
         val mRxDevice = rxDevice
             @Synchronized get
 
-        private val mSensorFeatures = getActivityFeatureMap(sensorFeatures, mRxDevice.name)
+        // TODO: the null thing is ugly the whole process should be refactored to scan the BLE device for what
+        // features it supports
+        private val mSensorFeatures = getActivityFeatureMap(sensorFeatures, name)
 
         var isEnabled = enabled
             @Synchronized get
@@ -38,13 +41,11 @@ object BlePool {
             set(value) {
                 field = value
                 updateUi()
-                saveEnabledState(mRxDevice.macAddress, value, mSensorFeatures.keys)
+                saveEnabledState(mRxDevice.macAddress, value, name, mSensorFeatures.keys)
                 // TODO: should disabled, disconnected devices be completely removed?
             }
 
-        val name: String
-            @Synchronized
-            get() = mRxDevice.name
+        val name = name
 
         val supportedFeatures: Set<SensorFeature>
             @Synchronized
@@ -69,6 +70,7 @@ object BlePool {
     private const val KEY_DEV_PREFS = "ble_sensor_configuration"
     private const val KEY_MAC_ADDRESSES = "mac_addresses"
     private const val KEY_SENSOR_FEATURES_POSTFIX = "_sensor_features"
+    private const val KEY_DEV_NAME_POSTFIX = "_dev_name"
 
 
     // synchronize access
@@ -92,10 +94,11 @@ object BlePool {
 
         mEnabledMacAddresses.addAll(mDeviceConfigStore!!.getStringSet(KEY_MAC_ADDRESSES, HashSet()))
         mEnabledMacAddresses.forEach({ macAddr ->
+            val devName = mDeviceConfigStore!!.getString(macAddr + KEY_DEV_NAME_POSTFIX, "<missing>")
             val sensorFeatures = mDeviceConfigStore!!
                     .getStringSet(macAddr + KEY_SENSOR_FEATURES_POSTFIX, HashSet())
                     .map { featureName -> SensorFeature.valueOf(featureName) }
-            val sensorDevice = SensorDevice(bleClient.getBleDevice(macAddr),
+            val sensorDevice = SensorDevice(bleClient.getBleDevice(macAddr), devName,
                     sensorFeatures, true)
             mDevices[macAddr] = sensorDevice
 
@@ -141,7 +144,7 @@ object BlePool {
                      sensorFeatures: List<SensorFeature>) {
         assert(!mDevices.containsKey(device.macAddress))
 
-        val bleDevice = SensorDevice(device, sensorFeatures, false)
+        val bleDevice = SensorDevice(device, device.name, sensorFeatures, false)
         mDevices[device.macAddress] = bleDevice
         updateUi()
         // TODO: when to remove devices? if the get selected for connection, go out of range, etc.
@@ -163,7 +166,7 @@ object BlePool {
     }
 
     @Synchronized
-    private fun saveEnabledState(macAddress: String, isEnabled: Boolean,
+    private fun saveEnabledState(macAddress: String, isEnabled: Boolean, devName: String,
                                  sensorFeatures: Set<SensorFeature>) {
         if (isEnabled)
             assert(mEnabledMacAddresses.add(macAddress))
@@ -174,11 +177,15 @@ object BlePool {
             putStringSet(KEY_MAC_ADDRESSES, mEnabledMacAddresses)
 
             val sensorFeatureKey = macAddress + KEY_SENSOR_FEATURES_POSTFIX
-            if (isEnabled)
+            val devNameKey = macAddress + KEY_DEV_NAME_POSTFIX
+            if (isEnabled) {
                 putStringSet(sensorFeatureKey,
                         HashSet(sensorFeatures.map { sf -> sf.name }))
-            else
+                putString(devNameKey, devName)
+            }else {
                 remove(sensorFeatureKey)
+                remove(devNameKey)
+            }
 
             commit()
         }

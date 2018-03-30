@@ -12,4 +12,9 @@
         android:orderInCategory="200"
         android:title="BLE devices"
         app:showAsAction="never" />
+    <item
+        android:id="@+id/action_end_app"
+        android:orderInCategory="300"
+        android:title="Quit"
+        app:showAsAction="never" />
 </menu>

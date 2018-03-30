@@ -27,8 +27,8 @@ public class Recorder {
 
     private static final String TAG = "de.tritrack.Recorder";
     private static final float ACCURACY_THRES = 50.f;
-    //private static final float AUTO_PAUSE_SPEED_KMH_THRES = 6.f; //1.5f;
-    private static final float AUTO_PAUSE_SPEED_KMH_THRES = -1.f;
+    private static final float AUTO_PAUSE_SPEED_KMH_THRES = 6.f; //1.5f;
+    //private static final float AUTO_PAUSE_SPEED_KMH_THRES = -1.f;
     private static final float AUTO_PAUSE_TIME_THRES = 10.f;
 
     private RecorderState mRecorderState = RecorderState.STOPPED;
@@ -135,10 +135,10 @@ public class Recorder {
             @Override
             public void onLocationUpdated(Location location) {
                 // TODO: maybe let this depend on the distance from the last fix and the speed
-//                Log.i(TAG, "accuracy is: " + location.getAccuracy());
-//                if (location.hasAccuracy() && location.getAccuracy() > ACCURACY_THRES)
-//                    // the accuracy is too low to be useful
-//                    return;
+                //Log.i(TAG, "accuracy is: " + location.getAccuracy());
+                if (location.hasAccuracy() && location.getAccuracy() > ACCURACY_THRES)
+                    // the accuracy is too low to be useful
+                    return;
 
                 latPublisher.onNext(location.getLatitude());
                 lonPublisher.onNext(location.getLongitude());
