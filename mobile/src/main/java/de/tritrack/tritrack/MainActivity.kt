@@ -2,6 +2,7 @@ package de.tritrack.tritrack
 
 import android.*
 import android.Manifest
+import android.content.DialogInterface
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
@@ -11,6 +12,7 @@ import android.support.v4.app.*
 import android.support.v4.content.ContextCompat
 import android.support.v4.view.ViewPager
 import android.support.v4.widget.DrawerLayout
+import android.support.v7.app.AlertDialog
 import android.support.v7.app.AppCompatActivity
 import android.support.v7.widget.Toolbar
 import android.view.*
@@ -120,8 +122,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun toggleTracking() {
-        val isRecording = mRec!!.toggleRecording()
-        if (isRecording) {
+        val isRecording = mRec!!.isRecording()
+        if (!isRecording) {
+            mRec!!.toggleRecording()
             // TODO: add Lap button functionality
             mStartStopButton!!.setImageResource(R.drawable.stop_sym)
             mPauseResumeButton!!.setOnClickListener {
@@ -133,9 +136,21 @@ class MainActivity : AppCompatActivity() {
             }
             mPauseResumeButton!!.isEnabled = true
         } else {
-            mStartStopButton!!.setImageResource(R.drawable.start_sym)
-            mPauseResumeButton!!.setImageResource(R.drawable.pause_sym)
-            mPauseResumeButton!!.isEnabled = false
+            val dialogBuilder = AlertDialog.Builder(this)
+            // TODO: use string resources
+            dialogBuilder.setMessage("End the activity?")
+            dialogBuilder.setPositiveButton("OK", { dialog: DialogInterface, id: Int ->
+                mRec!!.toggleRecording()
+                mStartStopButton!!.setImageResource(R.drawable.start_sym)
+                mPauseResumeButton!!.setImageResource(R.drawable.pause_sym)
+                mPauseResumeButton!!.isEnabled = false
+            })
+            dialogBuilder.setNegativeButton("Cancel", { dialog: DialogInterface, id: Int ->
+                // do nothing
+            })
+            val stopConfirmationDialog = dialogBuilder.create()
+            // TODO: maybe pause the recording while showing the dialog
+            stopConfirmationDialog.show()
         }
     }
 
