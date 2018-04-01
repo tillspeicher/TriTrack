@@ -84,6 +84,7 @@ internal class DataStreamer {
 
     fun resetState(): StorageManager {
         // TODO: reset the UI
+        mInputs.clear()
         mProviders.clear()
         mOperators.clear()
         //mDataListeners.clear();
