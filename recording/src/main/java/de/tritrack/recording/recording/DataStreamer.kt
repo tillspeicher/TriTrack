@@ -66,6 +66,22 @@ internal class DataStreamer {
         mDataListeners.putAll(listeners)
     }
 
+    fun addAutoPauseListener(pauseListener: UICommunication.UIDataListener) {
+        val uiSpeedListener = mDataListeners.remove(ActivityFeature.SPEED_KMH);
+        val speedListener =
+            if (uiSpeedListener == null) {
+                pauseListener
+            } else {
+               object : UICommunication.UIDataListener {
+                    override fun onFeatureChanged(newSpeed: Double) {
+                        uiSpeedListener.onFeatureChanged(newSpeed)
+                        pauseListener.onFeatureChanged(newSpeed)
+                    }
+               }
+            }
+        mDataListeners.put(ActivityFeature.SPEED_KMH, speedListener)
+    }
+
     fun resetState(): StorageManager {
         // TODO: reset the UI
         mProviders.clear()
@@ -115,26 +131,29 @@ internal class DataStreamer {
         // TODO: in case no inputs are produced for some time or all input sources are unavailable/
         // disconnected, 0 or some other default values should be produced
         var inSubject: PublishSubject<Double>? = mInputs[feature]
-        if (inSubject == null) {
-            inSubject = PublishSubject.create()
-            mInputs[feature] = inSubject
-            val obs = inSubject!!.map({v -> v})
-            addUiObserver(feature, obs)
-            // TODO: add logging back in
+        // TODO: check this assertion
+        if (inSubject != null)
+            throw IllegalStateException()
+
+        inSubject = PublishSubject.create()
+        mInputs[feature] = inSubject
+//        val obs = inSubject.map({v -> v})
+        val obs = inSubject
+        addUiObserver(feature, obs)
+        // TODO: add logging back in
 //            if (logFeature) {
 //                mStorageManager!!.addFeature(feature)
 //                addLoggingObserver(feature, obs)
 //            }
-            mProviders[feature] = obs
-            checkDependantOperators(feature)
-        }
+        mProviders[feature] = obs
+        checkDependantOperators(feature)
 
         return inSubject
     }
 
     @Throws(IllegalArgumentException::class)
     private fun addOperator(dependingFeatures: Array<ActivityFeature>, resFeature: ActivityFeature,
-                            op: Operator, logFeature: Boolean) {
+                            op: Operator, logFeature: Boolean, zipValues: Boolean = false) {
         if (mProviders.containsKey(resFeature))
             throw IllegalArgumentException("Cannot add operator for feature $resFeature twice.")
         Log.i(TAG, "adding operator for feature " + resFeature)
@@ -150,8 +169,7 @@ internal class DataStreamer {
                 throw IllegalArgumentException("No provider for feature $depFeature available.")
         }
 
-//        resObs = Observable.zip(inObservables, Function { values ->
-        val resObs: Observable<Double> = Observable.combineLatest(inObservables, Function { values ->
+        val func = Function<Array<Any>, Double> { values ->
             try {
                 val doubleVals = Array<Double>(values.size, { pos -> values[pos] as Double })
                 return@Function op.apply(doubleVals)
@@ -160,7 +178,14 @@ internal class DataStreamer {
                 Log.e(TAG, "Error in operator $resFeature:" + e.message)
                 return@Function 0.0
             }
-        })
+        }
+        val resObs = (
+            if (zipValues)
+                Observable.zip(inObservables, func)
+            else
+                Observable.combineLatest(inObservables, func)
+            ).share()
+
         addUiObserver(resFeature, resObs)
         // TODO: add logging back in
 //        if (logFeature) {
@@ -209,62 +234,53 @@ internal class DataStreamer {
                         !mProviders.containsKey(ActivityFeature.LATITUDE))
                     return
                 addOperator(arrayOf(ActivityFeature.LATITUDE, ActivityFeature.LONGITUDE),
-                        ActivityFeature.DISTANCE_RAW_M, object : Operator() {
-                    internal var lastLat: Double? = null
-                    internal var lastLong: Double? = null
-                    internal var dist = 0.0
+                        ActivityFeature.DISTANCE_INCREMENT_M, object : Operator() {
+                    internal var lastLat: Double = -1.0
+                    internal var lastLong: Double = -1.0
+
                     override fun apply(vals: Array<Double>): Double? {
                         val curLat = vals[0]
                         val curLong = vals[1]
-                        if (lastLat == null) {
+                        if (lastLat < 0) {
                             lastLat = curLat
                             lastLong = curLong
-                            return dist
+                            return 0.0
                         }
                         val distRes = FloatArray(1)
-                        Location.distanceBetween(lastLat!!, lastLong!!, curLat, curLong, distRes)
-                        //                                Log.i(TAG, "distance is " + distRes[0]);
-                        dist += distRes[0].toDouble()
+                        Location.distanceBetween(lastLat, lastLong, curLat, curLong, distRes)
                         lastLat = curLat
                         lastLong = curLong
-                        return dist
+                        return distRes[0].toDouble()
                     }
-                }, false /*ok?*/)
+                }, false /*ok?*/, true)
             }
-            ActivityFeature.DISTANCE_RAW_M -> {
-                addOperator(arrayOf(ActivityFeature.DISTANCE_RAW_M),
+            ActivityFeature.DISTANCE_INCREMENT_M -> {
+                addOperator(arrayOf(ActivityFeature.DISTANCE_INCREMENT_M),
                         ActivityFeature.DISTANCE_M, object : Operator() {
                     internal var totalDist = 0.0
-                    internal var lastDist: Double? = 0.0
+//                    internal var lastDist: Double? = 0.0
 
                     override fun apply(vals: Array<Double>): Double? {
                         if (!mIsResumed) {
-                            lastDist = null
+//                            lastDist = null
                             return totalDist
                         }
-                        val rawDist = vals[0]
-                        if (lastDist == null)
-                            lastDist = rawDist
-                        val distDiff = rawDist - lastDist!!
-                        totalDist += distDiff
+                        totalDist += vals[0]
                         return totalDist
                     }
                 }, false)
-                addOperator(arrayOf(ActivityFeature.DISTANCE_RAW_M),
+                addOperator(arrayOf(ActivityFeature.DISTANCE_INCREMENT_M),
                         ActivityFeature.SPEED_MS, object : TimedOperator() {
                     // TODO: is it necessary to force updates in periodic time intervals in
                     // case the GPS connection breaks?
-                    internal var lastDist: Double? = null
+//                    internal var lastDist: Double? = null
 
                     override fun apply(vals: Array<Double>): Double? {
                         val timeDiff = timeCheckpoint(true)
-                        val distM = vals[0]
-                        if (lastDist == null || timeDiff <= 0.0) {
-                            lastDist = distM
+                        val distDiff = vals[0]
+                        if (timeDiff <= 0.0) {
                             return 0.0
                         }
-                        val distDiff = distM - lastDist!!
-                        lastDist = distM
                         return distDiff / timeDiff
                     }
                 }, false)
@@ -408,7 +424,6 @@ internal class DataStreamer {
             lastTimeMs = curMs
             return timeDiff / 1000.0
         }
-
     }
 
     private inner class TimeAvgOperator(val normalized: Boolean) : TimedOperator() {

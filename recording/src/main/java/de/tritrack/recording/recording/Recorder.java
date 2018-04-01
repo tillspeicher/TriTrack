@@ -2,6 +2,7 @@ package de.tritrack.recording.recording;
 
 import android.content.Context;
 import android.location.Location;
+import android.util.Log;
 
 import java.util.Map;
 
@@ -27,9 +28,9 @@ public class Recorder {
 
     private static final String TAG = "de.tritrack.Recorder";
     private static final float ACCURACY_THRES = 50.f;
-    private static final float AUTO_PAUSE_SPEED_KMH_THRES = 6.f; //1.5f;
+    private static final float AUTO_PAUSE_SPEED_KMH_THRES = 5.f; //1.5f;
     //private static final float AUTO_PAUSE_SPEED_KMH_THRES = -1.f;
-    private static final float AUTO_PAUSE_TIME_THRES = 10.f;
+    private static final float AUTO_PAUSE_TIME_THRES = 5.f;
 
     private RecorderState mRecorderState = RecorderState.STOPPED;
     // TODO: replace this with a function call
@@ -38,6 +39,7 @@ public class Recorder {
     private BleRecorder mBleRecorder;
     private DataStreamer mDataStreamer;
     private StorageManager mStorageManager;
+    private UICommunication.UIDataListener mAutoPauseListener;
 
     private static Recorder instance = null;
 
@@ -53,25 +55,8 @@ public class Recorder {
         mLocation.config(LocationParams.NAVIGATION);
         mBleRecorder = new BleRecorder(context);
         mDataStreamer = new DataStreamer();
-    }
 
-    public void startBleScan(BlePool.SensorDeviceScanListener scanListener) {
-        mBleRecorder.startNewDevicesScan(scanListener);
-    }
-
-    public void stopBleScan() {
-        mBleRecorder.stopNewDevicesScan();
-    }
-
-    public void addDataListeners(Map<ActivityFeature, UICommunication.UIDataListener> listeners) {
-        // TODO: add settings switch for auto-pause
-//        addAutoPauseListener(listeners);
-        mDataStreamer.addDataListeners(listeners);
-    }
-
-    private void addAutoPauseListener(Map<ActivityFeature, UICommunication.UIDataListener> listeners) {
-        // intercept speed listener for auto-pause
-        final UICommunication.UIDataListener autoPauseListener = new UICommunication.UIDataListener() {
+        mAutoPauseListener = new UICommunication.UIDataListener() {
             private double lastSufficientSpeedTime = 0.f;
 
             @Override
@@ -90,20 +75,19 @@ public class Recorder {
                 }
             }
         };
-        final UICommunication.UIDataListener uiSpeedListener = listeners.get(ActivityFeature.SPEED_KMH);
-        UICommunication.UIDataListener speedListener;
-        if (uiSpeedListener == null) {
-            speedListener = autoPauseListener;
-        } else {
-            speedListener = new UICommunication.UIDataListener() {
-                @Override
-                public void onFeatureChanged(double newSpeed) {
-                    uiSpeedListener.onFeatureChanged(newSpeed);
-                    autoPauseListener.onFeatureChanged(newSpeed);
-                }
-            };
-        }
-        listeners.put(ActivityFeature.SPEED_KMH, speedListener);
+    }
+
+    public void startBleScan(BlePool.SensorDeviceScanListener scanListener) {
+        mBleRecorder.startNewDevicesScan(scanListener);
+    }
+
+    public void stopBleScan() {
+        mBleRecorder.stopNewDevicesScan();
+    }
+
+    public void addDataListeners(Map<ActivityFeature, UICommunication.UIDataListener> listeners) {
+        // TODO: add settings switch for auto-pause
+        mDataStreamer.addDataListeners(listeners);
     }
 
     /**
@@ -123,6 +107,7 @@ public class Recorder {
         // start recording
         mRecorderState = RecorderState.RUNNING;
         mStorageManager = mDataStreamer.resetState();
+        mDataStreamer.addAutoPauseListener(mAutoPauseListener);
 
         final PublishSubject<Double> latPublisher = mDataStreamer
                 .setInput(ActivityFeature.LATITUDE, true);

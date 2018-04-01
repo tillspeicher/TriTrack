@@ -22,7 +22,7 @@ public enum ActivityFeature {
     LATITUDE ("Lat", "deg", new DecimalFormat("#.#######")),
     LONGITUDE ("Lon", "deg", new DecimalFormat("#.#######")),
     ALTITUDE ("Altitude", "m", new DecimalFormat("#")),
-    DISTANCE_RAW_M ("Raw distance", "m", new DecimalFormat("#")),
+    DISTANCE_INCREMENT_M ("Distance increment", "m", new DecimalFormat("#")),
     DISTANCE_M ("Distance", "m", new DecimalFormat("#")),
     DISTANCE_KM ("Distance", "km", new DecimalFormat("#.##")),
     DISTANCE_KM_REV ("Distance (REV)", "km", new DecimalFormat("#.##")),
