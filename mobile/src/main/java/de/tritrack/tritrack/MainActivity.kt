@@ -60,12 +60,6 @@ class MainActivity : AppCompatActivity() {
         }
 
         mRec = Recorder.getInstance(applicationContext)
-//        val featureLayout = arrayOf(arrayOf(ActivityFeature.TIME_S, ActivityFeature.DISTANCE_KM), arrayOf(ActivityFeature.SPEED_KMH, ActivityFeature.AVG_SPEED_KMH), //ActivityFeature.ELEVATION_GAIN},
-//                arrayOf(ActivityFeature.ELEVATION_GAIN, ActivityFeature.MAX_SPEED_KMH), arrayOf(ActivityFeature.HEART_RATE, ActivityFeature.AVG_HEART_RATE), arrayOf(ActivityFeature.POWER_COMBINED, ActivityFeature.AVG_POWER_COMBINED), arrayOf(ActivityFeature.CADENCE, ActivityFeature.AVG_CADENCE))
-//        val contentLayout = findViewById<LinearLayout>(R.id.content_main)
-//        val textViews = ArrayList<TextView>()
-//        val listeners = DataTableProvider.getTableView(featureLayout, this, contentLayout, textViews)
-//        mRec!!.setDataListeners(listeners)
 
         val adapter = InfoScreenPagerAdapter(supportFragmentManager)
         mViewPager = findViewById<ViewPager>(R.id.info_screen_pager)
@@ -244,12 +238,12 @@ class MainActivity : AppCompatActivity() {
                         arrayOf(ActivityFeature.SPEED_KMH, ActivityFeature.AVG_SPEED_KMH), //ActivityFeature.ELEVATION_GAIN},
                         arrayOf(ActivityFeature.ELEVATION_GAIN, ActivityFeature.MAX_SPEED_KMH),
                         arrayOf(ActivityFeature.HEART_RATE, ActivityFeature.AVG_HEART_RATE),
-                        arrayOf(ActivityFeature.POWER_COMBINED, ActivityFeature.AVG_POWER_COMBINED),
-                        arrayOf(ActivityFeature.CADENCE, ActivityFeature.AVG_CADENCE))
+                        arrayOf(ActivityFeature.POWER_COMBINED, ActivityFeature.AVG_NORM_POWER),
+                        arrayOf(ActivityFeature.CADENCE, ActivityFeature.AVG_NORM_CADENCE))
                 1 -> arrayOf(arrayOf(ActivityFeature.DISTANCE_KM_REV, ActivityFeature.SPEED_KMH_REV),
                         arrayOf(ActivityFeature.MAX_HEART_RATE, ActivityFeature.MAX_POWER_COMBINED),
                         arrayOf(ActivityFeature.POWER_LEFT, ActivityFeature.POWER_RIGHT),
-                        arrayOf(ActivityFeature.AVG_NORM_POWER, ActivityFeature.AVG_NORM_CADENCE))
+                        arrayOf(ActivityFeature.AVG_POWER_COMBINED, ActivityFeature.AVG_CADENCE))
                 else -> {
                     TODO("implement this")
                 }
