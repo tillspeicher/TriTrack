@@ -46,7 +46,7 @@ public class MainActivity extends WearableActivity {
 
         mContainerView = (BoxInsetLayout) findViewById(R.id.container);
 
-        mRec = Recorder.getInstance(getApplicationContext());
+        mRec = Recorder.Companion.getInstance(getApplicationContext());
         ActivityFeature[][] featureLayout = new ActivityFeature[][]{
                 new ActivityFeature[]{ActivityFeature.TIME_S, ActivityFeature.DISTANCE_KM},
                 new ActivityFeature[]{ActivityFeature.PACE, ActivityFeature.AVG_PACE},

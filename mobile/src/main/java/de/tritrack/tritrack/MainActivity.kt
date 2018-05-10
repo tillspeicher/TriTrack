@@ -116,7 +116,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun toggleTracking() {
-        val isRecording = mRec!!.isRecording()
+        val isRecording = mRec!!.isRecording
         if (!isRecording) {
             mRec!!.toggleRecording()
             // TODO: add Lap button functionality

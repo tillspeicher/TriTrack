@@ -45,7 +45,7 @@ class SensorListFragment : Fragment() {
     }
 
 
-    override fun onAttach(context: Context?) {
+    override fun onAttach(context: Context) {
         super.onAttach(context)
         mRecorder = Recorder.getInstance(context)
     }
@@ -63,7 +63,7 @@ class SensorListFragment : Fragment() {
                     Manifest.permission.WRITE_EXTERNAL_STORAGE),
                     2)
         } else {
-            mRecorder!!.startBleScan(mSensorListener)
+            mRecorder!!.startBleScan(mSensorListener!!)
         }
     }
 
@@ -73,7 +73,7 @@ class SensorListFragment : Fragment() {
         when (requestCode) {
             2 -> if (grantResults.size > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 // TODO: revise this behavior
-                mRecorder!!.startBleScan(mSensorListener)
+                mRecorder!!.startBleScan(mSensorListener!!)
             } else {
                 // TODO
                 throw IllegalStateException()
