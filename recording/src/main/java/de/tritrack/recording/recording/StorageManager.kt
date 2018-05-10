@@ -18,7 +18,7 @@ import au.com.bytecode.opencsv.CSVWriter
 
 internal class StorageManager {
 
-    private val mFeaturePositions: MutableMap<ActivityFeature, Int>
+    private val mFeaturePositions: MutableMap<ActFeature, Int>
     private val mCurData: MutableList<Double>
     private val mHandler: Handler
     private var mWriter: CSVWriter? = null
@@ -29,7 +29,7 @@ internal class StorageManager {
         mHandler = Handler()
     }
 
-    fun addFeature(feature: ActivityFeature) {
+    fun addFeature(feature: ActFeature) {
         // TODO: disallow adding features while recording is in progress
         assert(!mFeaturePositions.containsKey(feature))
         val featurePos = mCurData.size
@@ -37,7 +37,7 @@ internal class StorageManager {
         mCurData.add(0.0)
     }
 
-    fun setValue(feature: ActivityFeature, value: Double) {
+    fun setValue(feature: ActFeature, value: Double) {
         assert(mFeaturePositions.containsKey(feature))
         Log.i(TAG, "getting feature $feature")
         val featurePos = (mFeaturePositions[feature])!!

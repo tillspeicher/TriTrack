@@ -1,32 +1,31 @@
 package de.tritrack.tritrack
 
-import android.*
 import android.Manifest
 import android.content.DialogInterface
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
-import android.support.design.widget.FloatingActionButton
 import android.support.design.widget.NavigationView
 import android.support.v4.app.*
 import android.support.v4.content.ContextCompat
 import android.support.v4.view.ViewPager
-import android.support.v4.widget.DrawerLayout
 import android.support.v7.app.AlertDialog
 import android.support.v7.app.AppCompatActivity
 import android.support.v7.widget.Toolbar
+import android.util.Log
 import android.view.*
 import android.widget.ImageButton
 import android.widget.LinearLayout
-import android.widget.RelativeLayout
 import android.widget.TextView
 
 import java.util.ArrayList
 
-import de.tritrack.recording.recording.ActivityFeature
+import de.tritrack.recording.recording.ActFeature
+import de.tritrack.recording.recording.OpType
 import de.tritrack.recording.recording.Recorder
 import de.tritrack.recording.recording.UICommunication
 import de.tritrack.recording.ui.DataTableProvider
+import io.reactivex.disposables.Disposable
 
 class MainActivity : AppCompatActivity() {
 
@@ -233,17 +232,17 @@ class MainActivity : AppCompatActivity() {
             val screenId = arguments!!.getInt(ARG_SCREEN_ID)
 
             // TODO: make configurable
-            val featureLayout: Array<Array<ActivityFeature>> = when(screenId) {
-                0 -> arrayOf(arrayOf(ActivityFeature.TIME_S, ActivityFeature.DISTANCE_KM),
-                        arrayOf(ActivityFeature.SPEED_KMH, ActivityFeature.AVG_SPEED_KMH), //ActivityFeature.ELEVATION_GAIN},
-                        arrayOf(ActivityFeature.ELEVATION_GAIN, ActivityFeature.MAX_SPEED_KMH),
-                        arrayOf(ActivityFeature.HEART_RATE, ActivityFeature.AVG_HEART_RATE),
-                        arrayOf(ActivityFeature.POWER_COMBINED, ActivityFeature.AVG_NORM_POWER),
-                        arrayOf(ActivityFeature.CADENCE, ActivityFeature.AVG_NORM_CADENCE))
-                1 -> arrayOf(arrayOf(ActivityFeature.DISTANCE_KM_REV, ActivityFeature.SPEED_KMH_REV),
-                        arrayOf(ActivityFeature.MAX_HEART_RATE, ActivityFeature.MAX_POWER_COMBINED),
-                        arrayOf(ActivityFeature.POWER_LEFT, ActivityFeature.POWER_RIGHT),
-                        arrayOf(ActivityFeature.AVG_POWER_COMBINED, ActivityFeature.AVG_CADENCE))
+            val featureLayout: Array<Array<Pair<ActFeature, OpType>>> = when(screenId) {
+                0 -> arrayOf(arrayOf(Pair(ActFeature.TIME_S, OpType.ID), Pair(ActFeature.DISTANCE_KM, OpType.ID)),
+                        arrayOf(Pair(ActFeature.SPEED_KMH, OpType.ID), Pair(ActFeature.SPEED_KMH, OpType.AVG)),
+                        arrayOf(Pair(ActFeature.ELEVATION_GAIN, OpType.ID), Pair(ActFeature.SPEED_KMH, OpType.MAX)),
+                        arrayOf(Pair(ActFeature.HEART_RATE, OpType.ID), Pair(ActFeature.HEART_RATE, OpType.AVG)),
+                        arrayOf(Pair(ActFeature.POWER_COMBINED, OpType.ID), Pair(ActFeature.POWER_COMBINED, OpType.NORM_AVG)),
+                        arrayOf(Pair(ActFeature.CADENCE, OpType.ID), Pair(ActFeature.CADENCE, OpType.NORM_AVG)))
+                1 -> arrayOf(arrayOf(Pair(ActFeature.DISTANCE_KM_REV, OpType.ID), Pair(ActFeature.SPEED_KMH_REV, OpType.ID)),
+                        arrayOf(Pair(ActFeature.HEART_RATE, OpType.MAX), Pair(ActFeature.POWER_COMBINED, OpType.MAX)),
+                        arrayOf(Pair(ActFeature.POWER_LEFT, OpType.ID), Pair(ActFeature.POWER_RIGHT, OpType.ID)),
+                        arrayOf(Pair(ActFeature.POWER_COMBINED, OpType.AVG), Pair(ActFeature.CADENCE, OpType.AVG)))
                 else -> {
                     TODO("implement this")
                 }

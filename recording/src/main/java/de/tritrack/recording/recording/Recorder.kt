@@ -1,15 +1,13 @@
 package de.tritrack.recording.recording
 
 import android.content.Context
-import android.location.Location
 import android.util.Log
 
 import io.nlopez.smartlocation.OnLocationUpdatedListener
 import io.nlopez.smartlocation.SmartLocation
 import io.nlopez.smartlocation.location.config.LocationParams
 import io.nlopez.smartlocation.location.providers.LocationGooglePlayServicesWithFallbackProvider
-
-import io.reactivex.subjects.PublishSubject
+import io.reactivex.disposables.Disposable
 
 /**
  * Created by till on 22.12.16.
@@ -74,9 +72,11 @@ class Recorder private constructor(context: Context) {
         mBleRecorder.stopNewDevicesScan()
     }
 
-    fun addDataListeners(listeners: Map<ActivityFeature, UICommunication.UIDataListener>) {
-        // TODO: add settings switch for auto-pause
-        mDataStreamer.addDataListeners(listeners)
+    fun addDataListeners(listeners: Map<Pair<ActFeature, OpType>, UICommunication.UIDataListener>) {
+        for ((key, listener) in listeners) {
+            val (actFeature, opType) = key
+            mDataStreamer.addDataListener(actFeature, opType, listener)
+        }
     }
 
     /**
@@ -96,14 +96,16 @@ class Recorder private constructor(context: Context) {
         // start recording
         mRecorderState = RecorderState.RUNNING
         mStorageManager = mDataStreamer.resetState()
-        mDataStreamer.addAutoPauseListener(mAutoPauseListener)
+        // TODO: add settings switch for auto-pause
+        mDataStreamer.addDataListener(ActFeature.SPEED_KMH, OpType.ID,
+                mAutoPauseListener)
 
         val latPublisher = mDataStreamer
-                .setInput(ActivityFeature.LATITUDE, true)
+                .getInputProvider(ActFeature.LATITUDE)
         val lonPublisher = mDataStreamer
-                .setInput(ActivityFeature.LONGITUDE, true)
+                .getInputProvider(ActFeature.LONGITUDE)
         val altitudePublisher = mDataStreamer
-                .setInput(ActivityFeature.ALTITUDE, true)
+                .getInputProvider(ActFeature.ALTITUDE)
 
         val locListener = OnLocationUpdatedListener { location ->
             // TODO: maybe let this depend on the distance from the last fix and the speed

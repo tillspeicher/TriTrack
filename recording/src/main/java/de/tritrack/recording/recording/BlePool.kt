@@ -52,7 +52,7 @@ object BlePool {
             get() = mSensorFeatures.keys
 
         @Synchronized
-        fun getActivityFeatures(sensorFeature: SensorFeature): List<ActivityFeature> {
+        fun getActivityFeatures(sensorFeature: SensorFeature): List<ActFeature> {
             val actFeatures = mSensorFeatures[sensorFeature]
             return actFeatures ?: Collections.emptyList()
         }
@@ -192,8 +192,8 @@ object BlePool {
     }
 
     private fun getActivityFeatureMap(sensFeatures: List<SensorFeature>, devName: String):
-            Map<SensorFeature, List<ActivityFeature>> {
-        val activityFeatures = HashMap<SensorFeature, List<ActivityFeature>>()
+            Map<SensorFeature, List<ActFeature>> {
+        val activityFeatures = HashMap<SensorFeature, List<ActFeature>>()
         sensFeatures.forEach({ sf -> activityFeatures.put(sf,
                 SensorFeature.getActivityFeatures(sf, devName)) })
         return activityFeatures

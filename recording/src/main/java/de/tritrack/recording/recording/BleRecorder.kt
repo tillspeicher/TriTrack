@@ -1,23 +1,14 @@
 package de.tritrack.recording.recording
 
-import android.content.ContentValues.TAG
 import android.content.Context
-import android.hardware.Sensor
-import android.os.Handler
 import android.util.Log
 
-import com.movisens.smartgattlib.Service
 import com.polidea.rxandroidble.RxBleClient
-import com.polidea.rxandroidble.RxBleConnection
 import com.polidea.rxandroidble.RxBleDevice
-import rx.Observable
 
 import java.util.ArrayList
-import java.util.HashMap
-import java.util.UUID
 
 import rx.Subscription
-import rx.subjects.PublishSubject
 
 /**
  * Created by till on 05.05.17.
@@ -30,7 +21,6 @@ internal class BleRecorder(context: Context) {
     private var mScanSubscription: Subscription? = null
     private var mServiceSubscription: Subscription? = null
     private val mReadSubscriptions: MutableList<Subscription>
-//    private val mScanHandler: Handler
 
     init {
         // TODO: check this initialization
@@ -42,13 +32,6 @@ internal class BleRecorder(context: Context) {
         mBlePool.loadSavedDevices(context, mBleClient!!)
         mReadSubscriptions = ArrayList()
 
-//        mScanHandler = Handler()
-        // TODO: do we need to stop this at some point?
-//        mScanHandler.post({
-//            periodicSensorCheck(streamer);
-//            // TODO: adjust delay dynamically
-//            mScanHandler.postDelayed(this, 2000)
-//        })
     }
 
     fun startNewDevicesScan(scanListener: BlePool.SensorDeviceScanListener) {
@@ -61,18 +44,6 @@ internal class BleRecorder(context: Context) {
         stopBleScanning()
         stopServiceDiscovery()
     }
-
-    fun terminate() {
-        stopBleScanning()
-        stopServiceDiscovery()
-//        mScanHandler.removeCallbacksAndMessages(null)
-    }
-
-//    fun periodicSensorCheck(dataStreamer: DataStreamer) {
-//        startBleScanning()
-//        mBlePool.disconnectedSavedDevices.forEach { dev -> startServiceDiscovery(dev) }
-//        startRecording(dataStreamer)
-//    }
 
     private fun startBleScanning() {
         assert(mScanSubscription == null)
@@ -123,12 +94,9 @@ internal class BleRecorder(context: Context) {
         // disconnects
         Log.i(TAG, "Start BLE recording")
         for (device in mBlePool.enabledDevices) {
-//            Log.i(TAG, "Checking device " + device + " for connection.")
             if (device.isConnected) {
-//                Log.i(TAG, "already connected")
                 continue
             }
-//            Log.i(TAG, "connecting")
             // TODO: what happens if a connected device gets disconnected?
 //            for (sensFeature in device.supportedFeatures) {
 //                startDeviceRecording(device.mRxDevice, sensFeature,
@@ -138,23 +106,18 @@ internal class BleRecorder(context: Context) {
         }
     }
 
-//    private fun startDeviceRecording(device: RxBleDevice, sensFeature: SensorFeature,
     private fun startDeviceRecording(device: BlePool.SensorDevice, streamer: DataStreamer) {
 //        Log.i(TAG, "adding listener for feature " + sensFeature)
 
         val bleConnection = device.mRxDevice.establishConnection(true)
         for (sensFeature in device.supportedFeatures) {
             val dataPublishers = device.getActivityFeatures(sensFeature)
-                    .filter{actFeature -> !streamer.hasInputSource(actFeature) }
-                    .map{actFeature ->
-                        streamer.setInput(actFeature, true)
+                    //.filter{ actFeature -> !streamer.hasInputSource(actFeature) }
+                    // TODO: if multiple sensors provide the same data then they use the same PublishSubject atm
+                    // Change this, might also lead to race conditions
+                    .map{ actFeature ->
+                        streamer.getInputProvider(actFeature)
                     }
-//            val dataPublishers = ArrayList<PublishSubject<Double>>()
-//            for (actFeature in activityFeatures) {
-//                if (!streamer.hasInputSource(actFeature))
-//                // to avoid adding something like cadence twice
-//                    dataPublishers.add(streamer.setInput(actFeature, true))
-//            }
             val readSubscription = bleConnection.flatMap { rxBleConnection ->
                 rxBleConnection.setupNotification(sensFeature.characteristic) }
                     .flatMap { observable -> observable }

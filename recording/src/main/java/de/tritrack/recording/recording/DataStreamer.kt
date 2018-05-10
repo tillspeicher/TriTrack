@@ -5,20 +5,12 @@ import android.os.Handler
 import android.os.SystemClock
 import android.util.Log
 
-import java.util.ArrayList
-import java.util.HashMap
-
-//import rx.Observable;
-//import rx.Observer;
-//import rx.functions.Function;
-//import rx.functions.FuncN;
-//import rx.subjects.PublishSubject;
-
 import io.reactivex.Observable
-import io.reactivex.Observer
 import io.reactivex.disposables.Disposable
+import io.reactivex.functions.BiFunction
 import io.reactivex.functions.Function
 import io.reactivex.subjects.PublishSubject
+import rx.Subscription
 
 /**
  * Created by till on 03.06.17.
@@ -26,10 +18,10 @@ import io.reactivex.subjects.PublishSubject
 
 internal class DataStreamer {
 
-    private val mInputs: MutableMap<ActivityFeature, PublishSubject<Double>>
-    private val mProviders: MutableMap<ActivityFeature, Observable<Double>>
-    private val mDataListeners: MutableMap<ActivityFeature, UICommunication.UIDataListener>
-    private val mOperators: MutableList<Operator>
+    private val mInputs: MutableMap<ActFeature, PublishSubject<Double>>
+    private val mProviders: MutableMap<ActFeature, Observable<Double>>
+    // TODO: we should be able to get rid of the data listeners map
+    //private val mDataListeners: MutableMap<ActFeature, UICommunication.UIDataListener>
     private var mStorageManager: StorageManager? = null
 
     private var mTimePublisher: PublishSubject<Double>? = null
@@ -55,44 +47,24 @@ internal class DataStreamer {
     init {
         mInputs = HashMap()
         mProviders = HashMap()
-        mDataListeners = HashMap<ActivityFeature, UICommunication.UIDataListener>()
-        mOperators = ArrayList()
+        //mDataListeners = HashMap()
         mTimeHandler = Handler()
     }
 
-    fun addDataListeners(listeners: Map<ActivityFeature, UICommunication.UIDataListener>) {
-        Log.i(TAG, "Settiong data listeners")
-//        mDataListeners.clear()
-        mDataListeners.putAll(listeners)
-    }
-
-    fun addAutoPauseListener(pauseListener: UICommunication.UIDataListener) {
-        val uiSpeedListener = mDataListeners.remove(ActivityFeature.SPEED_KMH);
-        val speedListener =
-            if (uiSpeedListener == null) {
-                pauseListener
-            } else {
-               object : UICommunication.UIDataListener {
-                    override fun onFeatureChanged(newSpeed: Double) {
-                        uiSpeedListener.onFeatureChanged(newSpeed)
-                        pauseListener.onFeatureChanged(newSpeed)
-                    }
-               }
-            }
-        mDataListeners.put(ActivityFeature.SPEED_KMH, speedListener)
+    fun addDataListener(actFeature: ActFeature, opType: OpType,
+                        listener: UICommunication.UIDataListener): Disposable {
+        Log.i(TAG, "Adding listener for $actFeature, $opType")
+        val operator = getOperator(opType, actFeature)
+        return operator.forEach { newVal -> listener.onFeatureChanged(newVal) }
     }
 
     fun resetState(): StorageManager {
         // TODO: reset the UI
-        mInputs.clear()
-        mProviders.clear()
-        mOperators.clear()
-        //mDataListeners.clear();
         mStorageManager = StorageManager()
 
         mTimeHandler.removeCallbacksAndMessages(null)
         mTimeOffsetMs = 0
-        mTimePublisher = setInput(ActivityFeature.TIME_S, true)
+        mTimePublisher = getInputProvider(ActFeature.TIME_S)
 
         return mStorageManager!!
     }
@@ -118,12 +90,12 @@ internal class DataStreamer {
         })
     }
 
-    fun hasInputSource(activityFeature: ActivityFeature): Boolean {
-        return mProviders.containsKey(activityFeature)
+    // TODO: get rid of this when multi-source inputs with fallback behaviour are implemented
+    fun hasInputSource(actFeature: ActFeature): Boolean {
+        return mProviders.containsKey(actFeature)
     }
 
-    fun setInput(feature: ActivityFeature,
-                 logFeature: Boolean): PublishSubject<Double> {
+    fun getInputProvider(feature: ActFeature): PublishSubject<Double> {
         Log.i(TAG, "adding source for feature " + feature)
 
         // TODO: this way all inputs are produced using the same PublishSubject, maybe use different
@@ -133,279 +105,168 @@ internal class DataStreamer {
         // disconnected, 0 or some other default values should be produced
         var inSubject: PublishSubject<Double>? = mInputs[feature]
         // TODO: check this assertion
-        if (inSubject != null)
-            throw IllegalStateException()
+        if (inSubject == null) {
+            inSubject = PublishSubject.create()
+            mInputs[feature] = inSubject
+            registerProvider(feature, inSubject)
+        }
+        return inSubject!!
+    }
 
-        inSubject = PublishSubject.create()
-        mInputs[feature] = inSubject
-//        val obs = inSubject.map({v -> v})
-        val obs = inSubject
-        addUiObserver(feature, obs)
-        // TODO: add logging back in
-//            if (logFeature) {
-//                mStorageManager!!.addFeature(feature)
-//                addLoggingObserver(feature, obs)
-//            }
-        mProviders[feature] = obs
-        checkDependantOperators(feature)
+    private fun getOperator(opertorType: OpType, targetFeature: ActFeature):
+            Observable<Double> {
+        val featureProvider = getProvider(targetFeature)
+        return when (opertorType) {
+            OpType.ID -> featureProvider
+            OpType.AVG -> featureProvider.map( TimeAvgOperator() )
+            OpType.MAX -> featureProvider.map( MaxOperator() )
+            OpType.NORM_AVG -> featureProvider.map( TimeAvgOperator(true))
+        }
+    }
 
-        return inSubject
+    private fun getProvider(targetFeature: ActFeature): Observable<Double> {
+        if (mProviders.containsKey(targetFeature))
+            return mProviders[targetFeature]!!
+
+        val resObs: Observable<Double> = when (targetFeature) {
+            ActFeature.DISTANCE_INCREMENT_M -> {
+                val latObs = getProvider(ActFeature.LATITUDE)
+                val longObs = getProvider(ActFeature.LONGITUDE)
+                Observable.zip(latObs, longObs,
+                        object : BiFunction<Double, Double, Double> {
+                            internal var lastLat: Double? = null
+                            internal var lastLong: Double? = null
+
+                            override fun apply(curLat: Double, curLong: Double): Double {
+                                if (lastLat == null) {
+                                    lastLat = curLat
+                                    lastLong = curLong
+                                    return 0.0
+                                }
+                                val distRes = FloatArray(1)
+                                Location.distanceBetween(lastLat!!, lastLong!!, curLat, curLong, distRes)
+                                lastLat = curLat
+                                lastLong = curLong
+                                return distRes[0].toDouble()
+                            }
+                        })
+            }
+            ActFeature.DISTANCE_M -> {
+                val distIncObs = getProvider(ActFeature.DISTANCE_INCREMENT_M)
+                distIncObs.map( object : Function<Double, Double> {
+                    internal var totalDist = 0.0
+
+                    override fun apply(increment: Double): Double {
+                        if (!mIsResumed)
+                            return totalDist
+                        totalDist += increment
+                        return totalDist
+                    }
+                })
+            }
+            ActFeature.SPEED_MS -> {
+                val distIncObs = getProvider(ActFeature.DISTANCE_INCREMENT_M)
+                distIncObs.map( object: TimedOperator() {
+                    // TODO: is it necessary to force updates in periodic time intervals in
+                    // case the GPS connection breaks?
+
+                    override fun apply(distDiff: Double): Double {
+                        val timeDiff = timeCheckpoint(true)
+                        if (timeDiff <= 0.0) {
+                            return 0.0
+                        }
+                        return distDiff / timeDiff
+                    }
+                })
+            }
+            ActFeature.DISTANCE_KM -> {
+                val distMObs = getProvider(ActFeature.DISTANCE_M)
+                distMObs.map { distM -> distM / 1000.0 }
+            }
+            ActFeature.SPEED_KMH -> {
+                val speedMsObs = getProvider(ActFeature.SPEED_MS)
+                speedMsObs.map { speedMS -> speedMS * 3.6 }
+            }
+            ActFeature.PACE -> {
+                val speedMsObs = getProvider(ActFeature.SPEED_MS)
+                speedMsObs.map { speedMS ->  if (speedMS == 0.0) 0.0 else 100.0 / 6.0 / speedMS }
+            }
+            ActFeature.ELEVATION_GAIN -> {
+                val altitudeObs = getProvider(ActFeature.ALTITUDE)
+                altitudeObs.map(object : Function<Double, Double> {
+                    internal var gain = 0.0
+                    internal var lastAltitude: Double? = null
+
+                    override fun apply(curAltitude: Double): Double? {
+                        if (!mIsResumed) {
+                            lastAltitude = null
+                            return gain
+                        }
+                        if (lastAltitude == null)
+                            lastAltitude = curAltitude
+                        gain += Math.max(curAltitude - lastAltitude!!, 0.0)
+                        lastAltitude = curAltitude
+                        return gain
+                    }
+                })
+            }
+            // TODO: merge this with the GPS-based distance computation and use only one of them
+            ActFeature.DISTANCE_KM_REV -> {
+                val wheel_circumference = 2.1 // TODO: check, make configurable
+                val cumWheelRevObs = getProvider(ActFeature.CUMULATIVE_WHEEL_REVOLUTIONS)
+                cumWheelRevObs.map { cumWheelRevs -> cumWheelRevs * wheel_circumference / 1000 }
+            }
+            ActFeature.SPEED_KMH_REV -> {
+                val wheel_circumference = 2.1 // TODO: check, make configurable
+                val cumWheelRevObs = getProvider(ActFeature.CUMULATIVE_WHEEL_REVOLUTIONS)
+                val lastWheelEventObs = getProvider(ActFeature.LAST_WHEEL_EVENT)
+                Observable.zip(cumWheelRevObs, lastWheelEventObs,
+                        EventPerMinOperator(wheel_circumference * 0.06))
+            }
+            ActFeature.CADENCE -> {
+                val cumCrankRevObs = getProvider(ActFeature.CUMULATIVE_CRANK_REVOLUTIONS)
+                val lastCrankEventObs = getProvider(ActFeature.LAST_CRANK_EVENT)
+                Observable.zip(cumCrankRevObs, lastCrankEventObs, EventPerMinOperator(1.0))
+            }
+            ActFeature.POWER_COMBINED -> {
+                val powerLeftObs = getProvider(ActFeature.POWER_LEFT)
+                val powerRightObs = getProvider(ActFeature.POWER_RIGHT)
+                Observable.zip(powerLeftObs, powerRightObs, BiFunction<Double, Double, Double> {
+                    powerLeft, powerRight -> powerLeft + powerRight
+                })
+            }
+            // getInputProvider() already registers so no need to register again
+            else -> return getInputProvider(targetFeature)
+
+        }
+        return registerProvider(targetFeature, resObs)
     }
 
     @Throws(IllegalArgumentException::class)
-    private fun addOperator(dependingFeatures: Array<ActivityFeature>, resFeature: ActivityFeature,
-                            op: Operator, logFeature: Boolean, zipValues: Boolean = false) {
+    private fun registerProvider(resFeature: ActFeature, obs: Observable<Double>):
+            Observable<Double> {
         if (mProviders.containsKey(resFeature))
             throw IllegalArgumentException("Cannot add operator for feature $resFeature twice.")
         Log.i(TAG, "adding operator for feature " + resFeature)
 
-        val inObservables = ArrayList<Observable<Double>>()
-        for (depFeature in dependingFeatures) {
-            val inObs = mProviders[depFeature]
-            if (inObs != null)
-                //inObservables.add(inObs.onBackpressureLatest());
-                // TODO: use the last one
-                inObservables.add(inObs)
-            else
-                throw IllegalArgumentException("No provider for feature $depFeature available.")
-        }
-
-        val func = Function<Array<Any>, Double> { values ->
-            try {
-                val doubleVals = Array<Double>(values.size, { pos -> values[pos] as Double })
-                return@Function op.apply(doubleVals)
-            } catch (e: Exception) {
-                // TODO: catching all exceptions is problematic
-                Log.e(TAG, "Error in operator $resFeature:" + e.message)
-                return@Function 0.0
-            }
-        }
-        val resObs = (
-            if (zipValues)
-                Observable.zip(inObservables, func)
-            else
-                Observable.combineLatest(inObservables, func)
-            ).share()
-
-        addUiObserver(resFeature, resObs)
+        //addUiObserver(resFeature, resObs)
         // TODO: add logging back in
 //        if (logFeature) {
 //            mStorageManager!!.addFeature(resFeature)
 //            addLoggingObserver(resFeature, resObs)
 //        }
 
-        mProviders[resFeature] = resObs
-        mOperators.add(op)
-        checkDependantOperators(resFeature)
+        val sharedObs = obs.share()
+        mProviders[resFeature] = sharedObs
+        return sharedObs
     }
 
-    // TODO: maybe move the declaration of the correspondences
-    private fun checkDependantOperators(feature: ActivityFeature) {
-        when (feature) {
-            ActivityFeature.HEART_RATE -> {
-                addOperator(arrayOf(ActivityFeature.HEART_RATE),
-                        ActivityFeature.AVG_HEART_RATE, TimeAvgOperator(), false)
-                addOperator(arrayOf(ActivityFeature.HEART_RATE),
-                        ActivityFeature.MAX_HEART_RATE, MaxOperator(), false)
-            }
-            ActivityFeature.POWER_LEFT, ActivityFeature.POWER_RIGHT -> {
-                if (!mProviders.containsKey(ActivityFeature.POWER_RIGHT) ||
-                        !mProviders.containsKey(ActivityFeature.POWER_LEFT))
-                    return
-                // TODO: the time correspondence of the values should be checked
-                addOperator(arrayOf(ActivityFeature.POWER_LEFT, ActivityFeature.POWER_RIGHT),
-                        ActivityFeature.POWER_COMBINED, object : Operator() {
-                    override fun apply(vals: Array<Double>): Double? {
-                        return vals[0] + vals[1]
-                    }
-                },false)
-            }
-            ActivityFeature.POWER_COMBINED -> {
-                addOperator(arrayOf(ActivityFeature.POWER_COMBINED),
-                        ActivityFeature.AVG_POWER_COMBINED, TimeAvgOperator(), false)
-                addOperator(arrayOf(ActivityFeature.POWER_COMBINED),
-                        ActivityFeature.MAX_POWER_COMBINED, MaxOperator(), false)
-                addOperator(arrayOf(ActivityFeature.POWER_COMBINED),
-                        ActivityFeature.AVG_NORM_POWER, TimeAvgOperator(true), false)
-//                addOperator(arrayOf(ActivityFeature.POWER_COMBINED), ActivityFeature.SMOOTH_POWER,
-//                        , false)
-            }
-            ActivityFeature.LATITUDE, ActivityFeature.LONGITUDE -> {
-                if (!mProviders.containsKey(ActivityFeature.LONGITUDE) ||
-                        !mProviders.containsKey(ActivityFeature.LATITUDE))
-                    return
-                addOperator(arrayOf(ActivityFeature.LATITUDE, ActivityFeature.LONGITUDE),
-                        ActivityFeature.DISTANCE_INCREMENT_M, object : Operator() {
-                    internal var lastLat: Double = -1.0
-                    internal var lastLong: Double = -1.0
 
-                    override fun apply(vals: Array<Double>): Double? {
-                        val curLat = vals[0]
-                        val curLong = vals[1]
-                        if (lastLat < 0) {
-                            lastLat = curLat
-                            lastLong = curLong
-                            return 0.0
-                        }
-                        val distRes = FloatArray(1)
-                        Location.distanceBetween(lastLat, lastLong, curLat, curLong, distRes)
-                        lastLat = curLat
-                        lastLong = curLong
-                        return distRes[0].toDouble()
-                    }
-                }, false /*ok?*/, true)
-            }
-            ActivityFeature.DISTANCE_INCREMENT_M -> {
-                addOperator(arrayOf(ActivityFeature.DISTANCE_INCREMENT_M),
-                        ActivityFeature.DISTANCE_M, object : Operator() {
-                    internal var totalDist = 0.0
-//                    internal var lastDist: Double? = 0.0
-
-                    override fun apply(vals: Array<Double>): Double? {
-                        if (!mIsResumed) {
-//                            lastDist = null
-                            return totalDist
-                        }
-                        totalDist += vals[0]
-                        return totalDist
-                    }
-                }, false)
-                addOperator(arrayOf(ActivityFeature.DISTANCE_INCREMENT_M),
-                        ActivityFeature.SPEED_MS, object : TimedOperator() {
-                    // TODO: is it necessary to force updates in periodic time intervals in
-                    // case the GPS connection breaks?
-//                    internal var lastDist: Double? = null
-
-                    override fun apply(vals: Array<Double>): Double? {
-                        val timeDiff = timeCheckpoint(true)
-                        val distDiff = vals[0]
-                        if (timeDiff <= 0.0) {
-                            return 0.0
-                        }
-                        return distDiff / timeDiff
-                    }
-                }, false)
-            }
-            ActivityFeature.DISTANCE_M -> addOperator(arrayOf(ActivityFeature.DISTANCE_M),
-                    ActivityFeature.DISTANCE_KM, object : Operator() {
-                override fun apply(vals: Array<Double>): Double? {
-                    return vals[0] / 1000.0
-                }
-            }, false)
-            ActivityFeature.SPEED_MS -> {
-                addOperator(arrayOf(ActivityFeature.SPEED_MS),
-                        ActivityFeature.SPEED_KMH, object : Operator() {
-                    override fun apply(speedMs: Array<Double>): Double? {
-                        return speedMs[0] * 3.6
-                    }
-                }, true)
-                addOperator(arrayOf(ActivityFeature.SPEED_MS),
-                        ActivityFeature.PACE, object : Operator() {
-                    override fun apply(vals: Array<Double>): Double? {
-                        val speed = vals[0]
-                        return if (speed == 0.0) 0.0 else 100.0 / 6.0 / speed
-                    }
-                }, false)
-            }
-            ActivityFeature.SPEED_KMH -> {
-                addOperator(arrayOf(ActivityFeature.SPEED_KMH),
-                        ActivityFeature.AVG_SPEED_KMH, TimeAvgOperator(), false)
-                addOperator(arrayOf(ActivityFeature.SPEED_KMH),
-                        ActivityFeature.MAX_SPEED_KMH, MaxOperator(), false)
-            }
-            ActivityFeature.PACE -> addOperator(arrayOf(ActivityFeature.PACE),
-                    ActivityFeature.AVG_PACE, TimeAvgOperator(), false)
-            ActivityFeature.ALTITUDE -> addOperator(arrayOf(ActivityFeature.ALTITUDE),
-                    ActivityFeature.ELEVATION_GAIN, object : Operator() {
-                //new Function<Double[], Double>() {
-                internal var gain = 0.0
-                internal var lastAltitude: Double? = null
-                override fun apply(value: Array<Double>): Double? {
-                    if (!mIsResumed) {
-                        lastAltitude = null
-                        return gain
-                    }
-                    val curAltitude = value[0]
-                    if (lastAltitude == null)
-                        lastAltitude = curAltitude
-                    gain += Math.max(curAltitude - lastAltitude!!, 0.0)
-                    lastAltitude = curAltitude
-                    return gain
-                }
-            }, false)
-            ActivityFeature.LAST_WHEEL_EVENT -> {
-                val wheel_circumference = 2.76 // TODO: check, make configurable
-                addOperator(arrayOf(ActivityFeature.CUMULATIVE_WHEEL_REVOLUTIONS,
-                        ActivityFeature.LAST_WHEEL_EVENT), ActivityFeature.DISTANCE_KM_REV,
-                        object : Operator() {
-                            override fun apply(vals: Array<Double>): Double? {
-                                return vals[0] * wheel_circumference / 1000
-                            }
-                        }, false)
-                addOperator(arrayOf(ActivityFeature.CUMULATIVE_WHEEL_REVOLUTIONS,
-                        ActivityFeature.LAST_WHEEL_EVENT), ActivityFeature.SPEED_KMH_REV,
-                        EventPerMinOperator(wheel_circumference * 0.06), false)
-            }
-            ActivityFeature.LAST_CRANK_EVENT -> addOperator(arrayOf(
-                    ActivityFeature.CUMULATIVE_CRANK_REVOLUTIONS, ActivityFeature.LAST_CRANK_EVENT),
-                    ActivityFeature.CADENCE,
-                    EventPerMinOperator(1.0), true)
-            ActivityFeature.CADENCE -> {
-                addOperator(arrayOf(ActivityFeature.CADENCE),
-                        ActivityFeature.AVG_CADENCE, TimeAvgOperator(), false)
-                addOperator(arrayOf(ActivityFeature.CADENCE),
-                        ActivityFeature.AVG_NORM_CADENCE, TimeAvgOperator(true), false)
-            }
-        }
+    private fun addLoggingObserver(feature: ActFeature, obs: Observable<Double>) {
+        obs.forEach { newVal -> mStorageManager!!.setValue(feature, newVal)}
     }
 
-    private fun addUiObserver(feature: ActivityFeature, obs: Observable<Double>) {
-        val listener = mDataListeners[feature]
-        if (listener == null) {
-            Log.i(TAG, "cannot find listener for feature " + feature)
-            // TODO: maybe change this such that you can only register listeners if there is a
-            // provider for the feature
-            return
-        }
-        obs.subscribe(object : Observer<Double> {
-            override fun onSubscribe(d: Disposable) {}
-
-            override fun onNext(v: Double) {
-                listener.onFeatureChanged(v)
-            }
-
-            override fun onError(e: Throwable) {
-                Log.i(TAG, "Error updating the UI: " + e.message, e)
-            }
-
-            override fun onComplete() {
-                Log.i(TAG, "Completed UI updating")
-            }
-        })
-    }
-
-    private fun addLoggingObserver(feature: ActivityFeature, obs: Observable<Double>) {
-        obs.subscribe(object : Observer<Double> {
-            override fun onSubscribe(d: Disposable) {}
-
-            override fun onNext(v: Double) {
-                //Log.i(TAG, "receiving value for " + feature + " for logging: " + val);
-                mStorageManager!!.setValue(feature, v)
-            }
-
-            override fun onError(e: Throwable) {
-                Log.i(TAG, "Error in logging subscription: " + e.message, e)
-            }
-
-            override fun onComplete() {
-                Log.i(TAG, "Completed logging subscription")
-            }
-        })
-    }
-
-    private abstract inner class Operator : Function<Array<Double>, Double>
-
-    private abstract inner class TimedOperator : Operator() {
+    private abstract inner class TimedOperator : Function<Double, Double> {
         protected var lastTimeMs: Long = -1
 
         internal fun timeCheckpoint(ignoreResumes: Boolean): Double {
@@ -432,20 +293,20 @@ internal class DataStreamer {
 
         private var lastAvg = -1.0
 
-        override fun apply(vals: Array<Double>): Double {
+        override fun apply(value: Double): Double {
             val timeDiff = timeCheckpoint(false)
             if (timeDiff < 0)
                 return if (lastAvg < 0) 0.0 else lastAvg
 
             // TODO: refine this condition
-            if (normalized && vals[0] < 1) {
+            if (normalized && value < 1) {
                 // below activation threshold
                 lastTimeMs = SystemClock.elapsedRealtime()
                 return lastAvg
             }
 
             val totalTime = totalTime
-            val curVal = vals[0]
+            val curVal = value
             if (lastAvg < 0)
                 lastAvg = curVal
             val curFrac = if (totalTime == 0.0) 0.0 else timeDiff / totalTime
@@ -457,28 +318,26 @@ internal class DataStreamer {
         }
     }
 
-    private inner class MaxOperator : Operator() {
+    private inner class MaxOperator : Function<Double, Double> {
         private var maxVal = 0.0
 
-        override fun apply(vals: Array<Double>): Double {
+        override fun apply(value: Double): Double {
             if (!mIsResumed)
                 maxVal
-            val v = vals[0]
+            val v = value
             assert(v >= 0)
             maxVal = Math.max(v, maxVal)
             return maxVal
         }
     }
 
-    private inner class EventPerMinOperator(multiplicator: Double) : Operator() {
+    private inner class EventPerMinOperator(multiplicator: Double) : BiFunction<Double, Double, Double> {
 
         private val multiplicator = multiplicator
         private var lastCumulativeRevolutions = 0.0
         private var lastTime = -1.0
 
-        override fun apply(doubles: Array<Double>): Double {
-            val revolutions = doubles[0]
-            val time = doubles[1]
+        override fun apply(revolutions: Double, time: Double): Double {
             if (lastTime < 0) {
                 lastCumulativeRevolutions = revolutions
                 lastTime = time
