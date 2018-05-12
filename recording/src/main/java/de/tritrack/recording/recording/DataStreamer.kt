@@ -19,6 +19,7 @@ import rx.Subscription
 internal class DataStreamer {
 
     private val mInputs: MutableMap<ActFeature, PublishSubject<Double>>
+    private val mProvidedInputs: MutableSet<ActFeature>
     private val mProviders: MutableMap<ActFeature, Observable<Double>>
     // TODO: we should be able to get rid of the data listeners map
     //private val mDataListeners: MutableMap<ActFeature, UICommunication.UIDataListener>
@@ -46,6 +47,7 @@ internal class DataStreamer {
 
     init {
         mInputs = HashMap()
+        mProvidedInputs = HashSet()
         mProviders = HashMap()
         //mDataListeners = HashMap()
         mTimeHandler = Handler()
@@ -61,6 +63,10 @@ internal class DataStreamer {
     fun resetState(): StorageManager {
         // TODO: reset the UI
         mStorageManager = StorageManager()
+
+        //mInputs.clear()
+        //mProviders.clear()
+        mProvidedInputs.clear()
 
         mTimeHandler.removeCallbacksAndMessages(null)
         mTimeOffsetMs = 0
@@ -92,10 +98,10 @@ internal class DataStreamer {
 
     // TODO: get rid of this when multi-source inputs with fallback behaviour are implemented
     fun hasInputSource(actFeature: ActFeature): Boolean {
-        return mProviders.containsKey(actFeature)
+        return mProvidedInputs.contains(actFeature)
     }
 
-    fun getInputProvider(feature: ActFeature): PublishSubject<Double> {
+    fun getInputProvider(feature: ActFeature, provideInput: Boolean = false): PublishSubject<Double> {
         Log.i(TAG, "adding source for feature " + feature)
 
         // TODO: this way all inputs are produced using the same PublishSubject, maybe use different
@@ -110,6 +116,10 @@ internal class DataStreamer {
             mInputs[feature] = inSubject
             registerProvider(feature, inSubject)
         }
+
+        if (provideInput)
+            assert(mProvidedInputs.add(feature))
+
         return inSubject!!
     }
 
@@ -249,7 +259,6 @@ internal class DataStreamer {
             throw IllegalArgumentException("Cannot add operator for feature $resFeature twice.")
         Log.i(TAG, "adding operator for feature " + resFeature)
 
-        //addUiObserver(resFeature, resObs)
         // TODO: add logging back in
 //        if (logFeature) {
 //            mStorageManager!!.addFeature(resFeature)
@@ -299,7 +308,7 @@ internal class DataStreamer {
                 return if (lastAvg < 0) 0.0 else lastAvg
 
             // TODO: refine this condition
-            if (normalized && value < 1) {
+            if (normalized && value < 5) {
                 // below activation threshold
                 lastTimeMs = SystemClock.elapsedRealtime()
                 return lastAvg
@@ -331,9 +340,8 @@ internal class DataStreamer {
         }
     }
 
-    private inner class EventPerMinOperator(multiplicator: Double) : BiFunction<Double, Double, Double> {
+    private inner class EventPerMinOperator(val multiplicator: Double) : BiFunction<Double, Double, Double> {
 
-        private val multiplicator = multiplicator
         private var lastCumulativeRevolutions = 0.0
         private var lastTime = -1.0
 

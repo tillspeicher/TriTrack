@@ -112,11 +112,9 @@ internal class BleRecorder(context: Context) {
         val bleConnection = device.mRxDevice.establishConnection(true)
         for (sensFeature in device.supportedFeatures) {
             val dataPublishers = device.getActivityFeatures(sensFeature)
-                    //.filter{ actFeature -> !streamer.hasInputSource(actFeature) }
-                    // TODO: if multiple sensors provide the same data then they use the same PublishSubject atm
-                    // Change this, might also lead to race conditions
+                    .filter{ actFeature -> !streamer.hasInputSource(actFeature) }
                     .map{ actFeature ->
-                        streamer.getInputProvider(actFeature)
+                        streamer.getInputProvider(actFeature, true)
                     }
             val readSubscription = bleConnection.flatMap { rxBleConnection ->
                 rxBleConnection.setupNotification(sensFeature.characteristic) }
