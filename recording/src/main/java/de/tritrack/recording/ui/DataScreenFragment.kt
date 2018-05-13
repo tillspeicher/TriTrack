@@ -2,19 +2,18 @@ package de.tritrack.recording.ui
 
 import android.os.Bundle
 import android.support.v4.app.Fragment
-import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
-import android.widget.TextView
 import de.tritrack.recording.R
 import de.tritrack.recording.recording.ActFeature
 import de.tritrack.recording.recording.OpType
 import de.tritrack.recording.recording.Recorder
 import io.reactivex.Observable
+import io.reactivex.Observer
 import io.reactivex.disposables.Disposable
-import java.util.*
+import kotlin.collections.ArrayList
 
 class DataScreenFragment : Fragment() {
 
@@ -33,6 +32,9 @@ class DataScreenFragment : Fragment() {
 
     private var mScreenLayout: Array<Array<Pair<ActFeature, OpType>>>? = null
     private var mObservables: List<List<Observable<Double>>>? = null
+    // TODO: try to get rid of this
+    // TODO: do we need to synchronize access to this guy?
+    private var mCurVals: List<List<Double?>>? = null
     private var mSubscriptions: List<Disposable>? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -43,7 +45,13 @@ class DataScreenFragment : Fragment() {
 
         val recorder = Recorder.getInstance(activity!!.applicationContext)
         mObservables = mScreenLayout!!.map { row -> row.map {
-            (feature, op) -> recorder.getDataObservable(feature, op) }}
+            (feature, op) -> recorder.getDataObservable(feature, op).share() }}
+        // TODO: is there a more elegant way to initialize this?
+        mCurVals = mObservables!!.map {
+            val valList = ArrayList<Double?>(it.size)
+            it.forEachIndexed { index, obs -> valList.add(null); obs.forEach { valList[index] = it }}
+            valList
+        }
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
@@ -51,7 +59,7 @@ class DataScreenFragment : Fragment() {
                 false) as LinearLayout
 
         mSubscriptions = DataTableProvider.getTableView(inflater, contentLayout,
-                mScreenLayout!!, mObservables!!)
+                mScreenLayout!!, mObservables!!, mCurVals!!)
 
         return contentLayout
     }
@@ -59,6 +67,20 @@ class DataScreenFragment : Fragment() {
     override fun onDestroyView() {
         mSubscriptions!!.forEach { it.dispose() }
         super.onDestroyView()
+    }
+
+    fun stop() {
+        mSubscriptions!!.forEach { it.dispose() }
+        mSubscriptions = emptyList()
+
+        mObservables = mCurVals!!.map { it.map {
+            object : Observable<Double>() {
+                override fun subscribeActual(observer: Observer<in Double>) {
+                    if (it != null)
+                        observer.onNext(it)
+                }
+            }
+        }}
     }
 
     private fun getDataDescriptors(id: Int): Array<Array<Pair<ActFeature, OpType>>> {

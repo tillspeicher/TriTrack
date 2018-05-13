@@ -35,7 +35,10 @@ enum class ActFeature(val description: String, val unit: String, private val mFo
     SMOOTH_POWER("Power (3s)", "W", DecimalFormat("#.#"));
 
     fun format(`val`: Double?): String {
-        return mFormat.format(`val`)
+        return if (`val` == null)
+            "-"
+        else
+            mFormat.format(`val`)
     }
 
     // TODO: this is a workaround

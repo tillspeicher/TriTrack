@@ -12,21 +12,10 @@ import android.support.v4.view.ViewPager
 import android.support.v7.app.AlertDialog
 import android.support.v7.app.AppCompatActivity
 import android.support.v7.widget.Toolbar
-import android.util.Log
 import android.view.*
 import android.widget.ImageButton
-import android.widget.LinearLayout
-import android.widget.TextView
 
-import java.util.ArrayList
-
-import de.tritrack.recording.recording.ActFeature
-import de.tritrack.recording.recording.OpType
 import de.tritrack.recording.recording.Recorder
-import de.tritrack.recording.recording.UICommunication
-import de.tritrack.recording.ui.DataTableProvider
-import io.reactivex.disposables.Disposable
-import android.view.ViewGroup
 import de.tritrack.recording.ui.DataScreenPagerAdapter
 
 
@@ -35,6 +24,7 @@ class MainActivity : AppCompatActivity() {
     private var mRec: Recorder? = null
 
     private var mViewPager: ViewPager? = null
+    private var mDataAdapter: DataScreenPagerAdapter? = null
     private var mStartStopButton: ImageButton? = null
     private var mPauseResumeButton: ImageButton? = null
     private var mLapButton: ImageButton? = null
@@ -63,22 +53,25 @@ class MainActivity : AppCompatActivity() {
 
         mRec = Recorder.getInstance(applicationContext)
 
-        val adapter = DataScreenPagerAdapter(supportFragmentManager)
-        mViewPager = findViewById<ViewPager>(R.id.info_screen_pager)
-        mViewPager!!.adapter = adapter
+        mDataAdapter = DataScreenPagerAdapter(supportFragmentManager)
+        mViewPager = findViewById(R.id.data_screen_pager)
+        mViewPager!!.adapter = mDataAdapter
+        // TODO: this is a hack because otherwise the first lap fragment starts delayed only when
+        // it is scrolled to the first time. Fix that
+//        mViewPager!!.setCurrentItem(2)
 
-        mStartStopButton = findViewById<ImageButton>(R.id.button_start_stop)
+        mStartStopButton = findViewById(R.id.button_start_stop)
         mStartStopButton!!.setOnClickListener { startStopTracking() }
         if (mRec!!.isRecording)
             mStartStopButton!!.setImageResource(R.drawable.stop_sym)
         // TODO: adjust to current pause state
-        mPauseResumeButton = findViewById<ImageButton>(R.id.button_pause_resume)
+        mPauseResumeButton = findViewById(R.id.button_pause_resume)
         mPauseResumeButton!!.isEnabled = false
-        mLapButton = findViewById<ImageButton>(R.id.button_lap)
+        mLapButton = findViewById(R.id.button_lap)
         mLapButton!!.isEnabled = false
 
         mLapButton!!.setOnClickListener {
-            adapter.addLabView()
+            mDataAdapter!!.addLabView()
         }
     }
 
@@ -127,8 +120,11 @@ class MainActivity : AppCompatActivity() {
     private fun toggleTracking() {
         val isRecording = mRec!!.isRecording
         if (!isRecording) {
+            // start recording
+            if (mRec!!.wasStarted)
+                // TODO: reset doesn't properly clear all data and Lap one sticks around in a paused way
+                mDataAdapter!!.reset()
             mRec!!.toggleRecording()
-            // TODO: add Lap button functionality
             mStartStopButton!!.setImageResource(R.drawable.stop_sym)
             mPauseResumeButton!!.setOnClickListener {
                 val isResumed = mRec!!.togglePause()
@@ -140,6 +136,7 @@ class MainActivity : AppCompatActivity() {
             mPauseResumeButton!!.isEnabled = true
             mLapButton!!.isEnabled = true
         } else {
+            // end recording
             val dialogBuilder = AlertDialog.Builder(this)
             // TODO: use string resources
             dialogBuilder.setMessage("End the activity?")

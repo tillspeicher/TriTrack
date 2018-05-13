@@ -20,6 +20,8 @@ class Recorder private constructor(context: Context) {
 
     private var mRecorderState = RecorderState.STOPPED
     // TODO: replace this with a function call
+    var wasStarted = false
+        private set
 
     private val mLocation: SmartLocation.LocationControl
     private val mBleRecorder: BleRecorder
@@ -37,7 +39,8 @@ class Recorder private constructor(context: Context) {
         STOPPED,
         USER_PAUSED,
         AUTO_PAUSED,
-        RUNNING
+        RUNNING,
+        RESTARTED
     }
 
     init {
@@ -77,6 +80,7 @@ class Recorder private constructor(context: Context) {
 
         // start recording
         mRecorderState = RecorderState.RUNNING
+        wasStarted = true
         mStorageManager = mDataStreamer.resetState()
         // TODO: add settings switch for auto-pause
         addAutoPauseListener()

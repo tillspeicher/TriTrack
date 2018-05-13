@@ -27,17 +27,24 @@ object DataTableProvider {
 
     fun getTableView(inflater: LayoutInflater, root: LinearLayout,
                      layout: Array<Array<Pair<ActFeature, OpType>>>,
-                     dataSources: List<List<Observable<Double>>>): List<Disposable> {
+                     dataSources: List<List<Observable<Double>>>,
+                     curVals: List<List<Double?>>): List<Disposable> {
         val tableView = inflater.inflate(R.layout.data_table, null)
                 .findViewById<TableLayout>(R.id.table_data)
         val subscriptions = ArrayList<Disposable>()
         // TODO: always add it at index 0?
         root.addView(tableView, 0)
-        for ((layoutRow, sourcesRow) in layout.zip(dataSources)) {
+        for ((i1, layoutRow) in layout.withIndex()) {
+            val sourcesRow = dataSources[i1]
+            val curValsRow = curVals[i1]
+
             val rowView = inflater.inflate(R.layout.data_row, null) as TableRow
             tableView.addView(rowView)
-            for ((dataDescriptor, dataSource) in layoutRow.zip(sourcesRow)) {
+            for ((i2, dataDescriptor) in layoutRow.withIndex()) {
                 val (actFeature, opType) = dataDescriptor
+                val dataSource = sourcesRow[i2]
+                val curVal = curValsRow[i2]
+
                 val featureView = inflater.inflate(R.layout.data_item, null)
                         .findViewById<View>(R.id.item_data)
                 rowView.addView(featureView)
@@ -47,6 +54,7 @@ object DataTableProvider {
                 val unitView = featureView.findViewById<View>(R.id.text_unit) as TextView
                 unitView.text = actFeature.unit
                 val dataView = featureView.findViewById<View>(R.id.text_data) as TextView
+                dataView.text = actFeature.format(curVal)
 
                 subscriptions.add(dataSource.forEach { dataView.text = actFeature.format(it) })
             }
