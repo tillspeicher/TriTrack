@@ -44,7 +44,7 @@
 
         </android.support.v4.view.ViewPager>
 
-        <!--<include layout="@layout/content_main" />-->
+        <!--<include layout="@layout/data_screen_content" />-->
 
         <!--<android.support.design.widget.FloatingActionButton-->
         <!--android:id="@+id/fab"-->

@@ -26,6 +26,9 @@ import de.tritrack.recording.recording.Recorder
 import de.tritrack.recording.recording.UICommunication
 import de.tritrack.recording.ui.DataTableProvider
 import io.reactivex.disposables.Disposable
+import android.view.ViewGroup
+import de.tritrack.recording.ui.DataScreenPagerAdapter
+
 
 class MainActivity : AppCompatActivity() {
 
@@ -60,16 +63,23 @@ class MainActivity : AppCompatActivity() {
 
         mRec = Recorder.getInstance(applicationContext)
 
-        val adapter = InfoScreenPagerAdapter(supportFragmentManager)
+        val adapter = DataScreenPagerAdapter(supportFragmentManager)
         mViewPager = findViewById<ViewPager>(R.id.info_screen_pager)
         mViewPager!!.adapter = adapter
 
         mStartStopButton = findViewById<ImageButton>(R.id.button_start_stop)
         mStartStopButton!!.setOnClickListener { startStopTracking() }
+        if (mRec!!.isRecording)
+            mStartStopButton!!.setImageResource(R.drawable.stop_sym)
+        // TODO: adjust to current pause state
         mPauseResumeButton = findViewById<ImageButton>(R.id.button_pause_resume)
         mPauseResumeButton!!.isEnabled = false
         mLapButton = findViewById<ImageButton>(R.id.button_lap)
         mLapButton!!.isEnabled = false
+
+        mLapButton!!.setOnClickListener {
+            adapter.addLabView()
+        }
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -128,6 +138,7 @@ class MainActivity : AppCompatActivity() {
                     mPauseResumeButton!!.setImageResource(R.drawable.start_sym)
             }
             mPauseResumeButton!!.isEnabled = true
+            mLapButton!!.isEnabled = true
         } else {
             val dialogBuilder = AlertDialog.Builder(this)
             // TODO: use string resources
@@ -137,6 +148,7 @@ class MainActivity : AppCompatActivity() {
                 mStartStopButton!!.setImageResource(R.drawable.start_sym)
                 mPauseResumeButton!!.setImageResource(R.drawable.pause_sym)
                 mPauseResumeButton!!.isEnabled = false
+                mLapButton!!.isEnabled = false
             })
             dialogBuilder.setNegativeButton("Cancel", { dialog: DialogInterface, id: Int ->
                 // do nothing
@@ -195,67 +207,6 @@ class MainActivity : AppCompatActivity() {
         private val REQUEST_CODE_LOCATION = 0
         private val REQUEST_CODE_EXTERNAL_STORAGE = 1
         private val REQUEST_CODE_BOTH = 2
-    }
-
-    class InfoScreenPagerAdapter(fm: FragmentManager) : FragmentPagerAdapter(fm) {
-
-        override fun getItem(position: Int): Fragment {
-            return InfoScreenFragment.newInstance(position)
-        }
-
-        override fun getCount(): Int {
-            // TODO: make configurable
-            return 2
-        }
-
-    }
-
-    class InfoScreenFragment : Fragment() {
-
-        companion object {
-
-            private val ARG_SCREEN_ID = "screen_id"
-
-            fun newInstance(id: Int): InfoScreenFragment {
-                val args = Bundle()
-                args.putInt(ARG_SCREEN_ID, id)
-                val fragment = InfoScreenFragment()
-                fragment.arguments = args
-                return fragment
-            }
-        }
-
-        override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
-            val contentLayout: LinearLayout = inflater.inflate(R.layout.content_main, container, false) as LinearLayout
-//            return contentLayout
-
-            val screenId = arguments!!.getInt(ARG_SCREEN_ID)
-
-            // TODO: make configurable
-            val featureLayout: Array<Array<Pair<ActFeature, OpType>>> = when(screenId) {
-                0 -> arrayOf(arrayOf(Pair(ActFeature.TIME_S, OpType.ID), Pair(ActFeature.DISTANCE_KM, OpType.ID)),
-                        arrayOf(Pair(ActFeature.SPEED_KMH, OpType.ID), Pair(ActFeature.SPEED_KMH, OpType.AVG)),
-                        arrayOf(Pair(ActFeature.ELEVATION_GAIN, OpType.ID), Pair(ActFeature.SPEED_KMH, OpType.MAX)),
-                        arrayOf(Pair(ActFeature.HEART_RATE, OpType.ID), Pair(ActFeature.HEART_RATE, OpType.AVG)),
-                        arrayOf(Pair(ActFeature.POWER_COMBINED, OpType.ID), Pair(ActFeature.POWER_COMBINED, OpType.NORM_AVG)),
-                        arrayOf(Pair(ActFeature.CADENCE, OpType.ID), Pair(ActFeature.CADENCE, OpType.NORM_AVG)))
-                1 -> arrayOf(arrayOf(Pair(ActFeature.DISTANCE_KM_REV, OpType.ID), Pair(ActFeature.SPEED_KMH_REV, OpType.ID)),
-                        arrayOf(Pair(ActFeature.HEART_RATE, OpType.MAX), Pair(ActFeature.POWER_COMBINED, OpType.MAX)),
-                        arrayOf(Pair(ActFeature.POWER_LEFT, OpType.ID), Pair(ActFeature.POWER_RIGHT, OpType.ID)),
-                        arrayOf(Pair(ActFeature.POWER_COMBINED, OpType.AVG), Pair(ActFeature.CADENCE, OpType.AVG)))
-                else -> {
-                    TODO("implement this")
-                }
-            }
-            //val contentLayout = findViewById<LinearLayout>(R.id.content_main)
-            val textViews = ArrayList<TextView>()
-            val listeners = DataTableProvider.getTableView(featureLayout, inflater, contentLayout, textViews)
-
-            val recorder = Recorder.getInstance(activity!!.applicationContext)
-            recorder.addDataListeners(listeners)
-
-            return contentLayout
-        }
     }
 
 }

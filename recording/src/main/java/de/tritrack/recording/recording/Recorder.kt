@@ -7,7 +7,10 @@ import io.nlopez.smartlocation.OnLocationUpdatedListener
 import io.nlopez.smartlocation.SmartLocation
 import io.nlopez.smartlocation.location.config.LocationParams
 import io.nlopez.smartlocation.location.providers.LocationGooglePlayServicesWithFallbackProvider
+import io.reactivex.Observable
 import io.reactivex.disposables.Disposable
+import io.reactivex.functions.Consumer
+import java.util.*
 
 /**
  * Created by till on 22.12.16.
@@ -22,7 +25,7 @@ class Recorder private constructor(context: Context) {
     private val mBleRecorder: BleRecorder
     private val mDataStreamer: DataStreamer
     private var mStorageManager: StorageManager? = null
-    private val mAutoPauseListener: UICommunication.UIDataListener
+    private var mAutoPauseSubscription: Disposable? = null
 
     val isRecording: Boolean
         get() = mRecorderState != RecorderState.STOPPED
@@ -43,25 +46,6 @@ class Recorder private constructor(context: Context) {
         mLocation.config(LocationParams.NAVIGATION)
         mBleRecorder = BleRecorder(context)
         mDataStreamer = DataStreamer()
-
-        mAutoPauseListener = object : UICommunication.UIDataListener {
-            private var lastSufficientSpeedTime = 0.0
-
-            override fun onFeatureChanged(newSpeed: Double) {
-                // TODO: can it happen that there are no GPS updates anymore and newSpeed won't get
-                // updated correctly?
-                // TODO: implement different auto-pause threshold depending on the activity
-                if (isRunning && newSpeed < AUTO_PAUSE_SPEED_KMH_THRES
-                        && mDataStreamer.totalTime - lastSufficientSpeedTime > AUTO_PAUSE_TIME_THRES) {
-                    // TODO: update the UI (the pause button)
-                    togglePause(true)
-                } else if (newSpeed >= AUTO_PAUSE_SPEED_KMH_THRES) {
-                    lastSufficientSpeedTime = mDataStreamer.totalTime
-                    if (mRecorderState == RecorderState.AUTO_PAUSED)
-                        togglePause(true)
-                }
-            }
-        }
     }
 
     fun startBleScan(scanListener: BlePool.SensorDeviceScanListener) {
@@ -72,11 +56,8 @@ class Recorder private constructor(context: Context) {
         mBleRecorder.stopNewDevicesScan()
     }
 
-    fun addDataListeners(listeners: Map<Pair<ActFeature, OpType>, UICommunication.UIDataListener>) {
-        for ((key, listener) in listeners) {
-            val (actFeature, opType) = key
-            mDataStreamer.addDataListener(actFeature, opType, listener)
-        }
+    fun getDataObservable(feature: ActFeature, op: OpType): Observable<Double> {
+        return mDataStreamer.getOperator(feature, op)
     }
 
     /**
@@ -86,6 +67,7 @@ class Recorder private constructor(context: Context) {
         if (mRecorderState != RecorderState.STOPPED) {
             // stop recording
             mRecorderState = RecorderState.STOPPED
+            mAutoPauseSubscription!!.dispose()
             mLocation.stop()
             mBleRecorder.stopRecording()
             mStorageManager!!.stopStoring()
@@ -97,8 +79,7 @@ class Recorder private constructor(context: Context) {
         mRecorderState = RecorderState.RUNNING
         mStorageManager = mDataStreamer.resetState()
         // TODO: add settings switch for auto-pause
-        mDataStreamer.addDataListener(ActFeature.SPEED_KMH, OpType.ID,
-                mAutoPauseListener)
+        addAutoPauseListener()
 
         val latPublisher = mDataStreamer
                 .getInputProvider(ActFeature.LATITUDE)
@@ -155,6 +136,28 @@ class Recorder private constructor(context: Context) {
             mStorageManager!!.startStoring()
             return true
         }
+    }
+
+    private fun addAutoPauseListener() {
+        mAutoPauseSubscription = mDataStreamer.getOperator(ActFeature.SPEED_KMH, OpType.ID).forEach(
+                object: Consumer<Double> {
+            private var lastSufficientSpeedTime = 0.0
+
+            override fun accept(newSpeed: Double) {
+                // TODO: can it happen that there are no GPS updates anymore and newSpeed won't get
+                // updated correctly?
+                // TODO: implement different auto-pause threshold depending on the activity
+                if (isRunning && newSpeed < AUTO_PAUSE_SPEED_KMH_THRES
+                        && mDataStreamer.totalTime - lastSufficientSpeedTime > AUTO_PAUSE_TIME_THRES) {
+                    // TODO: update the UI (the pause button)
+                    togglePause(true)
+                } else if (newSpeed >= AUTO_PAUSE_SPEED_KMH_THRES) {
+                    lastSufficientSpeedTime = mDataStreamer.totalTime
+                    if (mRecorderState == RecorderState.AUTO_PAUSED)
+                        togglePause(true)
+                }
+            }
+        })
     }
 
     companion object {

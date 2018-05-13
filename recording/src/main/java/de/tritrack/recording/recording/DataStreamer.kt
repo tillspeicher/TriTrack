@@ -9,7 +9,9 @@ import io.reactivex.Observable
 import io.reactivex.disposables.Disposable
 import io.reactivex.functions.BiFunction
 import io.reactivex.functions.Function
+import io.reactivex.subjects.BehaviorSubject
 import io.reactivex.subjects.PublishSubject
+import io.reactivex.subjects.ReplaySubject
 import rx.Subscription
 
 /**
@@ -22,7 +24,7 @@ internal class DataStreamer {
     private val mProvidedInputs: MutableSet<ActFeature>
     private val mProviders: MutableMap<ActFeature, Observable<Double>>
     // TODO: we should be able to get rid of the data listeners map
-    //private val mDataListeners: MutableMap<ActFeature, UICommunication.UIDataListener>
+    //private val mDataListeners: MutableMap<ActFeature, UICommunication.UIDataListener> private var mStorageManager: StorageManager? = null
     private var mStorageManager: StorageManager? = null
 
     private var mTimePublisher: PublishSubject<Double>? = null
@@ -53,12 +55,13 @@ internal class DataStreamer {
         mTimeHandler = Handler()
     }
 
-    fun addDataListener(actFeature: ActFeature, opType: OpType,
-                        listener: UICommunication.UIDataListener): Disposable {
-        Log.i(TAG, "Adding listener for $actFeature, $opType")
-        val operator = getOperator(opType, actFeature)
-        return operator.forEach { newVal -> listener.onFeatureChanged(newVal) }
-    }
+//    fun addDataListener(actFeature: ActFeature, opType: OpType,
+//                        listener: UICommunication.UIDataListener): Disposable {
+//        Log.i(TAG, "Adding listener for $actFeature, $opType")
+//        val operator = getOperator(opType, actFeature)
+////        return operator.subscribe { newVal -> listener.onFeatureChanged(newVal) }
+//        return operator.forEach { listener.onFeatureChanged(it) }
+//    }
 
     fun resetState(): StorageManager {
         // TODO: reset the UI
@@ -123,14 +126,17 @@ internal class DataStreamer {
         return inSubject!!
     }
 
-    private fun getOperator(opertorType: OpType, targetFeature: ActFeature):
+    fun getOperator(targetFeature: ActFeature, operatorType: OpType):
             Observable<Double> {
         val featureProvider = getProvider(targetFeature)
-        return when (opertorType) {
+        return when (operatorType) {
             OpType.ID -> featureProvider
             OpType.AVG -> featureProvider.map( TimeAvgOperator() )
             OpType.MAX -> featureProvider.map( MaxOperator() )
-            OpType.NORM_AVG -> featureProvider.map( TimeAvgOperator(true))
+            OpType.NORM_AVG -> featureProvider.map( TimeAvgOperator(true) )
+            // TODO: the offset operator should be initialized with the current value for the targetFeature
+            // at this point in time, otherwise it might get initialized too late
+            OpType.OFFSET -> featureProvider.map( OffsetOperator() )
         }
     }
 
@@ -222,12 +228,12 @@ internal class DataStreamer {
             }
             // TODO: merge this with the GPS-based distance computation and use only one of them
             ActFeature.DISTANCE_KM_REV -> {
-                val wheel_circumference = 2.1 // TODO: check, make configurable
+                val wheel_circumference = WHEEL_CIRCUMFERENCE
                 val cumWheelRevObs = getProvider(ActFeature.CUMULATIVE_WHEEL_REVOLUTIONS)
                 cumWheelRevObs.map { cumWheelRevs -> cumWheelRevs * wheel_circumference / 1000 }
             }
             ActFeature.SPEED_KMH_REV -> {
-                val wheel_circumference = 2.1 // TODO: check, make configurable
+                val wheel_circumference = WHEEL_CIRCUMFERENCE
                 val cumWheelRevObs = getProvider(ActFeature.CUMULATIVE_WHEEL_REVOLUTIONS)
                 val lastWheelEventObs = getProvider(ActFeature.LAST_WHEEL_EVENT)
                 Observable.zip(cumWheelRevObs, lastWheelEventObs,
@@ -241,7 +247,7 @@ internal class DataStreamer {
             ActFeature.POWER_COMBINED -> {
                 val powerLeftObs = getProvider(ActFeature.POWER_LEFT)
                 val powerRightObs = getProvider(ActFeature.POWER_RIGHT)
-                Observable.zip(powerLeftObs, powerRightObs, BiFunction<Double, Double, Double> {
+                Observable.combineLatest(powerLeftObs, powerRightObs, BiFunction<Double, Double, Double> {
                     powerLeft, powerRight -> powerLeft + powerRight
                 })
             }
@@ -265,7 +271,11 @@ internal class DataStreamer {
 //            addLoggingObserver(resFeature, resObs)
 //        }
 
-        val sharedObs = obs.share()
+        // When someone subscribes, give them the last output
+        // TODO: check that this does not leak memory somehow
+        // TODO: check that a ref count dropping to 0 does not cause unsubscriptions even though we
+        // later want to resubscribe.
+        val sharedObs = obs.replay(1).refCount()
         mProviders[resFeature] = sharedObs
         return sharedObs
     }
@@ -327,6 +337,18 @@ internal class DataStreamer {
         }
     }
 
+    private inner class OffsetOperator() : Function<Double, Double> {
+
+        var initialVal: Double? = null
+
+        override fun apply(nextVal: Double): Double {
+            if (initialVal == null)
+                initialVal = nextVal
+            return nextVal - initialVal!!
+        }
+
+    }
+
     private inner class MaxOperator : Function<Double, Double> {
         private var maxVal = 0.0
 
@@ -372,8 +394,11 @@ internal class DataStreamer {
 
     companion object {
 
-        private val TAG = "DataStreamer"
-        private val TIME_DELAY_MS = 1000
+        private const val TAG = "DataStreamer"
+        private const val TIME_DELAY_MS = 1000
+
+        // TODO: make configurable
+        private const val WHEEL_CIRCUMFERENCE = 2.11
     }
 
 }

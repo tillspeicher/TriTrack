@@ -9,11 +9,6 @@ import android.os.Looper
 
 object UICommunication {
 
-    interface UIDataListener {
-        // TODO: put feature type here?
-        fun onFeatureChanged(newValue: Double)
-    }
-
     private val mUiHandler = Handler(Looper.getMainLooper())
 
     fun runOnUiThread(r: Runnable) {

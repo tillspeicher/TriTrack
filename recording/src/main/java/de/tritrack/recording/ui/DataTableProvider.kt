@@ -14,6 +14,8 @@ import de.tritrack.recording.R
 import de.tritrack.recording.recording.ActFeature
 import de.tritrack.recording.recording.OpType
 import de.tritrack.recording.recording.UICommunication
+import io.reactivex.Observable
+import io.reactivex.disposables.Disposable
 
 /**
  * Created by till on 04.06.17.
@@ -23,41 +25,33 @@ object DataTableProvider {
 
     private val TAG = "DataTableProvider"
 
-    fun getTableView(layout: Array<Array<Pair<ActFeature, OpType>>>, inflater: LayoutInflater,
-                     root: LinearLayout, textViews: MutableList<TextView>):
-            Map<Pair<ActFeature, OpType>, UICommunication.UIDataListener> {
-        val listeners = HashMap<Pair<ActFeature, OpType>, UICommunication.UIDataListener>()
+    fun getTableView(inflater: LayoutInflater, root: LinearLayout,
+                     layout: Array<Array<Pair<ActFeature, OpType>>>,
+                     dataSources: List<List<Observable<Double>>>): List<Disposable> {
         val tableView = inflater.inflate(R.layout.data_table, null)
                 .findViewById<TableLayout>(R.id.table_data)
+        val subscriptions = ArrayList<Disposable>()
         // TODO: always add it at index 0?
         root.addView(tableView, 0)
-        for (row in layout) {
-            val rowView = inflater.inflate(R.layout.data_row, null) as TableRow// TableRow(context);
+        for ((layoutRow, sourcesRow) in layout.zip(dataSources)) {
+            val rowView = inflater.inflate(R.layout.data_row, null) as TableRow
             tableView.addView(rowView)
-            for ((actFeature, opType) in row) {
+            for ((dataDescriptor, dataSource) in layoutRow.zip(sourcesRow)) {
+                val (actFeature, opType) = dataDescriptor
                 val featureView = inflater.inflate(R.layout.data_item, null)
                         .findViewById<View>(R.id.item_data)
                 rowView.addView(featureView)
 
                 val descriptionView = featureView.findViewById<View>(R.id.text_description) as TextView
                 descriptionView.text = opType.prefix + actFeature.description
-                textViews.add(descriptionView)
                 val unitView = featureView.findViewById<View>(R.id.text_unit) as TextView
                 unitView.text = actFeature.unit
-                textViews.add(unitView)
                 val dataView = featureView.findViewById<View>(R.id.text_data) as TextView
-                textViews.add(dataView)
-                val viewListener = object : UICommunication.UIDataListener {
-                    override fun onFeatureChanged(newVal: Double) {
-                        Log.i(TAG, "listening $actFeature, $opType to $newVal")
-                        dataView.text = actFeature.format(newVal)
-                    }
-                }
-                //                Log.i(TAG, "adding listener for feature " + feature);
-                listeners[Pair(actFeature, opType)] = viewListener
+
+                subscriptions.add(dataSource.forEach { dataView.text = actFeature.format(it) })
             }
         }
-        return listeners
+        return subscriptions
     }
 
 }
