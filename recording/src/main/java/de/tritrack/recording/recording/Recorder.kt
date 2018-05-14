@@ -32,7 +32,7 @@ class Recorder private constructor(context: Context) {
     val isRecording: Boolean
         get() = mRecorderState != RecorderState.STOPPED
 
-    private val isRunning: Boolean
+    val isRunning: Boolean
         get() = mRecorderState == RecorderState.RUNNING
 
     private enum class RecorderState {

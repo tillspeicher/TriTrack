@@ -61,17 +61,29 @@ class MainActivity : AppCompatActivity() {
 //        mViewPager!!.setCurrentItem(2)
 
         mStartStopButton = findViewById(R.id.button_start_stop)
-        mStartStopButton!!.setOnClickListener { startStopTracking() }
-        if (mRec!!.isRecording)
-            mStartStopButton!!.setImageResource(R.drawable.stop_sym)
-        // TODO: adjust to current pause state
         mPauseResumeButton = findViewById(R.id.button_pause_resume)
-        mPauseResumeButton!!.isEnabled = false
         mLapButton = findViewById(R.id.button_lap)
-        mLapButton!!.isEnabled = false
 
+        mStartStopButton!!.setOnClickListener { startStopTracking() }
+        mPauseResumeButton!!.setOnClickListener {
+            // TODO: listen for auto-pause and update the button
+            val isResumed = mRec!!.togglePause()
+            if (isResumed)
+                mPauseResumeButton!!.setImageResource(R.drawable.pause_sym)
+            else
+                mPauseResumeButton!!.setImageResource(R.drawable.start_sym)
+        }
         mLapButton!!.setOnClickListener {
             mDataAdapter!!.addLabView()
+        }
+
+        if (mRec!!.isRecording) {
+            mStartStopButton!!.setImageResource(R.drawable.stop_sym)
+            if (mRec!!.isRunning)
+                mPauseResumeButton!!.setImageResource(R.drawable.pause_sym)
+        } else {
+            mPauseResumeButton!!.isEnabled = false
+            mLapButton!!.isEnabled = false
         }
     }
 
@@ -126,13 +138,6 @@ class MainActivity : AppCompatActivity() {
                 mDataAdapter!!.reset()
             mRec!!.toggleRecording()
             mStartStopButton!!.setImageResource(R.drawable.stop_sym)
-            mPauseResumeButton!!.setOnClickListener {
-                val isResumed = mRec!!.togglePause()
-                if (isResumed)
-                    mPauseResumeButton!!.setImageResource(R.drawable.pause_sym)
-                else
-                    mPauseResumeButton!!.setImageResource(R.drawable.start_sym)
-            }
             mPauseResumeButton!!.isEnabled = true
             mLapButton!!.isEnabled = true
         } else {
