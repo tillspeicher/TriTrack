@@ -6,13 +6,9 @@ import android.os.SystemClock
 import android.util.Log
 
 import io.reactivex.Observable
-import io.reactivex.disposables.Disposable
 import io.reactivex.functions.BiFunction
 import io.reactivex.functions.Function
-import io.reactivex.subjects.BehaviorSubject
 import io.reactivex.subjects.PublishSubject
-import io.reactivex.subjects.ReplaySubject
-import rx.Subscription
 
 /**
  * Created by till on 03.06.17.
@@ -182,12 +178,12 @@ internal class DataStreamer {
             }
             ActFeature.SPEED_MS -> {
                 val distIncObs = getProvider(ActFeature.DISTANCE_INCREMENT_M)
-                distIncObs.map( object: TimedOperator() {
+                distIncObs.map( object: TimedOperator(false) {
                     // TODO: is it necessary to force updates in periodic time intervals in
                     // case the GPS connection breaks?
 
                     override fun apply(distDiff: Double): Double {
-                        val timeDiff = timeCheckpoint(true)
+                        val timeDiff = timeIncrement()
                         if (timeDiff <= 0.0) {
                             return 0.0
                         }
@@ -285,47 +281,56 @@ internal class DataStreamer {
         obs.forEach { newVal -> mStorageManager!!.setValue(feature, newVal)}
     }
 
-    private abstract inner class TimedOperator : Function<Double, Double> {
-        protected var lastTimeMs: Long = -1
+    private abstract inner class TimedOperator(val useNetTime: Boolean = true) :
+            Function<Double, Double> {
+        protected var initTime: Double = -1.0
+        protected var lastTimeMs: Double = -1.0
 
-        internal fun timeCheckpoint(ignoreResumes: Boolean): Double {
-            if (!ignoreResumes && !mIsResumed) {
-                lastTimeMs = -1
-                return -1.0
-            }
-            val curMs = SystemClock.elapsedRealtime()
-            val timeDiff: Long
+        internal fun timeIncrement(): Double {
+            val curTime = curTime()
+
+            val timeIncrement = curTime - lastTimeMs
+            lastTimeMs = curTime
+            return timeIncrement
+        }
+
+        internal fun totalTime(): Double {
+            val curTime = curTime()
+            return curTime - initTime
+        }
+
+        internal fun curTime(): Double {
+            val curTime = if (useNetTime)
+                totalTime
+            else
+                SystemClock.elapsedRealtime().toDouble() / 1000.0
+
             if (lastTimeMs < 0) {
-                // TODO: if the recording was paused and resumed but this method was not called in
-                // between, this will be off, maybe we should use a counter for resumes
-                timeDiff = curMs - mCheckpointTimeMs
-            } else {
-                timeDiff = curMs - lastTimeMs
+                initTime = curTime
+                lastTimeMs = curTime
             }
-            lastTimeMs = curMs
-            return timeDiff / 1000.0
+            return curTime
         }
     }
 
-    private inner class TimeAvgOperator(val normalized: Boolean) : TimedOperator() {
+    private inner class TimeAvgOperator(val normalized: Boolean) : TimedOperator(true) {
         constructor(): this(false)
 
         private var lastAvg = -1.0
 
-        override fun apply(value: Double): Double {
-            val timeDiff = timeCheckpoint(false)
+        override fun apply(curVal: Double): Double {
+            val timeDiff = timeIncrement()
             if (timeDiff < 0)
                 return if (lastAvg < 0) 0.0 else lastAvg
 
             // TODO: refine this condition
-            if (normalized && value < 5) {
+            if (normalized && curVal < 5) {
                 // below activation threshold
-                lastTimeMs = SystemClock.elapsedRealtime()
+                lastTimeMs = curTime()
                 return lastAvg
             }
 
-            val totalTime = totalTime
-            val curVal = value
+            val totalTime = totalTime()
             if (lastAvg < 0)
                 lastAvg = curVal
             val curFrac = if (totalTime == 0.0) 0.0 else timeDiff / totalTime
