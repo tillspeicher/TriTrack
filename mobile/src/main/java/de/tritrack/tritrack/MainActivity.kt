@@ -67,11 +67,13 @@ class MainActivity : AppCompatActivity() {
         mStartStopButton!!.setOnClickListener { startStopTracking() }
         mPauseResumeButton!!.setOnClickListener {
             // TODO: listen for auto-pause and update the button
+            // TODO: maybe reenable screen timeout when paused
             val isResumed = mRec!!.togglePause()
-            if (isResumed)
+            if (isResumed) {
                 mPauseResumeButton!!.setImageResource(R.drawable.pause_sym)
-            else
+            } else {
                 mPauseResumeButton!!.setImageResource(R.drawable.start_sym)
+            }
         }
         mLapButton!!.setOnClickListener {
             mDataAdapter!!.addLabView()
@@ -140,6 +142,9 @@ class MainActivity : AppCompatActivity() {
             mStartStopButton!!.setImageResource(R.drawable.stop_sym)
             mPauseResumeButton!!.isEnabled = true
             mLapButton!!.isEnabled = true
+
+            // disable screen timeout
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         } else {
             // end recording
             val dialogBuilder = AlertDialog.Builder(this)
@@ -151,6 +156,9 @@ class MainActivity : AppCompatActivity() {
                 mPauseResumeButton!!.setImageResource(R.drawable.pause_sym)
                 mPauseResumeButton!!.isEnabled = false
                 mLapButton!!.isEnabled = false
+
+                // re-enable screen timeout
+                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             })
             dialogBuilder.setNegativeButton("Cancel", { dialog: DialogInterface, id: Int ->
                 // do nothing
