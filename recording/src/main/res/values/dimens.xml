@@ -8,4 +8,7 @@
     <dimen name="sensor_text_font_size">24sp</dimen>
     <dimen name="sensor_layout_margin">10dp</dimen>
     <dimen name="sensor_row_height">32dp</dimen>
+
+    <dimen name="data_screen_horizontal_margin">16dp</dimen>
+    <dimen name="data_screen_vertical_margin">16dp</dimen>
 </resources>
