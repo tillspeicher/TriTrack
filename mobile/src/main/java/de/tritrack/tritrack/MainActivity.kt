@@ -53,7 +53,7 @@ class MainActivity : AppCompatActivity() {
 
         mRec = Recorder.getInstance(applicationContext)
 
-        mDataAdapter = DataScreenPagerAdapter(supportFragmentManager)
+        mDataAdapter = DataScreenPagerAdapter(supportFragmentManager, this)
         mViewPager = findViewById(R.id.data_screen_pager)
         mViewPager!!.adapter = mDataAdapter
         // TODO: this is a hack because otherwise the first lap fragment starts delayed only when
@@ -76,7 +76,9 @@ class MainActivity : AppCompatActivity() {
             }
         }
         mLapButton!!.setOnClickListener {
-            mDataAdapter!!.addLabView()
+            mRec!!.nextSegment()
+            // TODO
+            //mDataAdapter!!.addLabView()
         }
 
         if (mRec!!.isRecording) {

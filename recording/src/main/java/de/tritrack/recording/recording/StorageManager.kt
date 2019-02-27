@@ -1,5 +1,6 @@
 package de.tritrack.recording.recording
 
+import android.graphics.Path
 import android.os.Environment
 import android.os.Handler
 import android.util.Log
@@ -11,37 +12,32 @@ import java.util.ArrayList
 import java.util.HashMap
 
 import au.com.bytecode.opencsv.CSVWriter
+import io.reactivex.disposables.Disposable
+import io.reactivex.functions.Consumer
 
 /**
  * Created by till on 01.07.17.
  */
 
-internal class StorageManager {
+internal class StorageManager(dataStreamer: DataStreamer,
+                              vararg loggingFeatures: ActivityData) {
 
-    private val mFeaturePositions: MutableMap<ActFeature, Int>
-    private val mCurData: MutableList<Double>
-    private val mHandler: Handler
-    private var mWriter: CSVWriter? = null
+    // TODO: can we directly create a mutable map?
+    // TODO: should we synchronize access to this map?
+    private val curValues: MutableMap<ActivityData, Double> =
+            loggingFeatures.associate { it to 0.0 }.toMutableMap()
+    private val listenerHandles = mutableListOf<Disposable>()
+    private val handler = Handler()
+    //private val activityRecording = ActivityRecording(loggingFeatures)
 
     init {
-        mFeaturePositions = HashMap()
-        mCurData = ArrayList()
-        mHandler = Handler()
-    }
-
-    fun addFeature(feature: ActFeature) {
-        // TODO: disallow adding features while recording is in progress
-        assert(!mFeaturePositions.containsKey(feature))
-        val featurePos = mCurData.size
-        mFeaturePositions[feature] = featurePos
-        mCurData.add(0.0)
-    }
-
-    fun setValue(feature: ActFeature, value: Double) {
-        assert(mFeaturePositions.containsKey(feature))
-        Log.i(TAG, "getting feature $feature")
-        val featurePos = (mFeaturePositions[feature])!!
-        mCurData.set(featurePos, value)
+        loggingFeatures.map { loggingFeature ->
+            // TODO: do we need to share? Try to get rid of it here and in the DataScreenFragment
+            // and move it to the DataStreamer instead
+            val featureObs = dataStreamer.getOperator(loggingFeature)//.share()
+            listenerHandles.add(featureObs.forEach { featureVal ->
+                curValues[loggingFeature] = featureVal })
+        }
     }
 
     fun startStoring() {
@@ -58,43 +54,33 @@ internal class StorageManager {
         try {
             outFile.createNewFile()
             val fw = FileWriter(outFile, true)
-            mWriter = CSVWriter(fw, CSVWriter.DEFAULT_SEPARATOR, CSVWriter.NO_QUOTE_CHARACTER)
+            // TODO
+            //mWriter = CSVWriter(fw, CSVWriter.DEFAULT_SEPARATOR, CSVWriter.NO_QUOTE_CHARACTER)
         } catch (ex: IOException) {
             Log.e(TAG, "Error creating out file: " + ex.message)
             return
         }
 
-        val featureDescriptions = arrayOfNulls<String>(mCurData.size)
-        for ((key, value) in mFeaturePositions) {
-            featureDescriptions[value] = key.description
-        }
-        mWriter!!.writeNext(featureDescriptions)
         resumeStoring()
     }
 
     // TODO: check that these methods are called in the right way/states
     fun resumeStoring() {
-        mHandler.post(object : Runnable {
-            internal var values = arrayOfNulls<String>(mCurData.size)
+        handler.post(object : Runnable {
             override fun run() {
-                for (i in mCurData.indices) {
-                    val data = mCurData[i]
-                    values[i] = data?.toString() ?: ""
-                }
-                mWriter!!.writeNext(values)
-                mHandler.postDelayed(this, STORAGE_INTERVAL_MS)
+                //activityRecording.addDataPoint(curValues)
             }
         })
     }
 
     fun pauseStoring() {
-        mHandler.removeCallbacksAndMessages(null)
+        handler.removeCallbacksAndMessages(null)
     }
 
     fun stopStoring() {
         pauseStoring()
         try {
-            mWriter!!.close()
+            //mWriter!!.close()
         } catch (ex: IOException) {
             Log.e(TAG, "Error closing csv writer: " + ex.message)
         }
@@ -104,7 +90,7 @@ internal class StorageManager {
     companion object {
 
         private val TAG = "StorageManager"
-        private val STORAGE_INTERVAL_MS: Long = 4000
+        private val STORAGE_INTERVAL_MS: Long = 5000
     }
 
 }

@@ -8,34 +8,19 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import de.tritrack.recording.R
 import de.tritrack.recording.recording.ActFeature
+import de.tritrack.recording.recording.ActivityData
 import de.tritrack.recording.recording.OpType
 import de.tritrack.recording.recording.Recorder
 import io.reactivex.Observable
 import io.reactivex.Observer
 import io.reactivex.disposables.Disposable
+import rx.subjects.BehaviorSubject
 import kotlin.collections.ArrayList
 
 class DataScreenFragment : Fragment() {
 
-    companion object {
-
-        private val ARG_SCREEN_ID = "screen_id"
-
-        fun newInstance(id: Int): DataScreenFragment {
-            val args = Bundle()
-            args.putInt(ARG_SCREEN_ID, id)
-            val fragment = DataScreenFragment()
-            fragment.arguments = args
-            return fragment
-        }
-    }
-
-    private var mScreenLayout: Array<Array<Pair<ActFeature, OpType>>>? = null
-    private var mObservables: List<List<Observable<Double>>>? = null
-    // TODO: try to get rid of this
-    // TODO: do we need to synchronize access to this guy?
-    private var mCurVals: List<List<Double?>>? = null
-    private var mSubscriptions: List<Disposable>? = null
+    private var mScreenLayout: Array<Array<ActivityData>>? = null
+    private var mObservations: List<List<BehaviorSubject<Double>>>? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -44,67 +29,83 @@ class DataScreenFragment : Fragment() {
         mScreenLayout = getDataDescriptors(screenId)
 
         val recorder = Recorder.getInstance(activity!!.applicationContext)
-        mObservables = mScreenLayout!!.map { row -> row.map {
-            (feature, op) -> recorder.getDataObservable(feature, op).share() }}
-        // TODO: is there a more elegant way to initialize this?
-        mCurVals = mObservables!!.map {
-            val valList = ArrayList<Double?>(it.size)
-            it.forEachIndexed { index, obs -> valList.add(null); obs.forEach { valList[index] = it }}
-            valList
-        }
+        val segmentId = arguments!!.getInt(ARG_SEGMENT_ID)
+        val segmentFeatures = mScreenLayout!!.flatten().toSet()
+        val segmentObservations = recorder.getSegmentObservations(segmentId, segmentFeatures)
+        mObservations = mScreenLayout!!.map { row -> row.map {
+            actData -> segmentObservations[actData]!! }}
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
         val contentLayout: LinearLayout = inflater.inflate(R.layout.data_screen_content, container,
                 false) as LinearLayout
 
-        mSubscriptions = DataTableProvider.getTableView(inflater, contentLayout,
-                mScreenLayout!!, mObservables!!, mCurVals!!)
+        DataTableProvider.getTableView(inflater, contentLayout, mScreenLayout!!, mObservations!!)
 
         return contentLayout
     }
 
-    override fun onDestroyView() {
-        mSubscriptions!!.forEach { it.dispose() }
-        super.onDestroyView()
-    }
+    companion object {
 
-    fun stop() {
-        mSubscriptions!!.forEach { it.dispose() }
-        mSubscriptions = emptyList()
+        private val ARG_SCREEN_ID = "screen_id"
+        private val ARG_SEGMENT_ID = "segment_id"
 
-        mObservables = mCurVals!!.map { it.map {
-            object : Observable<Double>() {
-                override fun subscribeActual(observer: Observer<in Double>) {
-                    if (it != null)
-                        observer.onNext(it)
-                }
-            }
-        }}
-    }
-
-    private fun getDataDescriptors(id: Int): Array<Array<Pair<ActFeature, OpType>>> {
-        // TODO: make configurable
-        val featureLayout: Array<Array<Pair<ActFeature, OpType>>> = when(id) {
-            0 -> arrayOf(arrayOf(Pair(ActFeature.TIME_S, OpType.ID), Pair(ActFeature.DISTANCE_KM, OpType.ID)),
-                    arrayOf(Pair(ActFeature.SPEED_KMH, OpType.ID), Pair(ActFeature.SPEED_KMH, OpType.AVG)),
-                    arrayOf(Pair(ActFeature.ELEVATION_GAIN, OpType.ID), Pair(ActFeature.SPEED_KMH, OpType.MAX)),
-                    arrayOf(Pair(ActFeature.HEART_RATE, OpType.ID), Pair(ActFeature.HEART_RATE, OpType.AVG)),
-                    arrayOf(Pair(ActFeature.POWER_COMBINED, OpType.ID), Pair(ActFeature.POWER_COMBINED, OpType.NORM_AVG)),
-                    arrayOf(Pair(ActFeature.CADENCE, OpType.ID), Pair(ActFeature.CADENCE, OpType.NORM_AVG)))
-            1 -> arrayOf(arrayOf(Pair(ActFeature.DISTANCE_KM_REV, OpType.ID), Pair(ActFeature.SPEED_KMH_REV, OpType.ID)),
-                    arrayOf(Pair(ActFeature.HEART_RATE, OpType.MAX), Pair(ActFeature.POWER_COMBINED, OpType.MAX)),
-                    arrayOf(Pair(ActFeature.POWER_LEFT, OpType.ID), Pair(ActFeature.POWER_RIGHT, OpType.ID)),
-                    arrayOf(Pair(ActFeature.POWER_COMBINED, OpType.AVG), Pair(ActFeature.CADENCE, OpType.AVG)))
-        // TODO: this is the interval part, make it configurable, etc.
-            else -> arrayOf(arrayOf(Pair(ActFeature.TIME_S, OpType.OFFSET), Pair(ActFeature.DISTANCE_KM, OpType.OFFSET)),
-                    arrayOf(Pair(ActFeature.SPEED_KMH, OpType.ID), Pair(ActFeature.SPEED_KMH, OpType.AVG)),
-                    arrayOf(Pair(ActFeature.ELEVATION_GAIN, OpType.OFFSET), Pair(ActFeature.SPEED_KMH, OpType.MAX)),
-                    arrayOf(Pair(ActFeature.HEART_RATE, OpType.ID), Pair(ActFeature.HEART_RATE, OpType.AVG)),
-                    arrayOf(Pair(ActFeature.POWER_COMBINED, OpType.ID), Pair(ActFeature.POWER_COMBINED, OpType.NORM_AVG)),
-                    arrayOf(Pair(ActFeature.CADENCE, OpType.ID), Pair(ActFeature.CADENCE, OpType.NORM_AVG)))
+        fun newInstance(id: Int, segmentId: Int): DataScreenFragment {
+            val args = Bundle()
+            args.putInt(ARG_SCREEN_ID, id)
+            args.putInt(ARG_SEGMENT_ID, segmentId)
+            val fragment = DataScreenFragment()
+            fragment.arguments = args
+            return fragment
         }
-        return featureLayout
+
+        fun getAllDataDescriptors(): Set<ActivityData> {
+            // TODO: hacky, come up with something better once screen content can be adjusted
+            return (getDataDescriptors(0).flatten() +
+                    getDataDescriptors(1).flatten() +
+                    getDataDescriptors(2).flatten()).toSet()
+        }
+
+        private fun getDataDescriptors(id: Int): Array<Array<ActivityData>> {
+            // TODO: make configurable
+            return when(id) {
+                0 -> arrayOf(arrayOf(ActivityData(ActFeature.TIME_S, OpType.ID),
+                        ActivityData(ActFeature.DISTANCE_KM, OpType.ID)),
+                        arrayOf(ActivityData(ActFeature.SPEED_KMH, OpType.ID),
+                                ActivityData(ActFeature.SPEED_KMH, OpType.AVG)),
+                        arrayOf(ActivityData(ActFeature.ELEVATION_GAIN, OpType.ID),
+                                ActivityData(ActFeature.SPEED_KMH, OpType.MAX)),
+                        arrayOf(ActivityData(ActFeature.HEART_RATE, OpType.ID),
+                                ActivityData(ActFeature.HEART_RATE, OpType.AVG)),
+                        arrayOf(ActivityData(ActFeature.POWER_COMBINED, OpType.ID),
+                                ActivityData(ActFeature.POWER_COMBINED, OpType.NORM_AVG)),
+                        arrayOf(ActivityData(ActFeature.CADENCE, OpType.ID),
+                                ActivityData(ActFeature.CADENCE, OpType.NORM_AVG)))
+                1 -> arrayOf(arrayOf(ActivityData(ActFeature.DISTANCE_KM_REV, OpType.ID),
+                        ActivityData(ActFeature.SPEED_KMH_REV, OpType.ID)),
+                        arrayOf(ActivityData(ActFeature.HEART_RATE, OpType.MAX),
+                                ActivityData(ActFeature.POWER_COMBINED, OpType.MAX)),
+                        arrayOf(ActivityData(ActFeature.POWER_LEFT, OpType.ID),
+                                ActivityData(ActFeature.POWER_RIGHT, OpType.ID)),
+                        arrayOf(ActivityData(ActFeature.POWER_COMBINED, OpType.AVG),
+                                ActivityData(ActFeature.CADENCE, OpType.AVG)))
+                // TODO: this is the interval part, make it configurable, etc.
+                else -> arrayOf(arrayOf(ActivityData(ActFeature.TIME_S, OpType.OFFSET),
+                        ActivityData(ActFeature.DISTANCE_KM, OpType.OFFSET)),
+                        arrayOf(ActivityData(ActFeature.SPEED_KMH, OpType.ID),
+                                ActivityData(ActFeature.SPEED_KMH, OpType.AVG)),
+                        arrayOf(ActivityData(ActFeature.ELEVATION_GAIN, OpType.OFFSET),
+                                ActivityData(ActFeature.SPEED_KMH, OpType.MAX)),
+                        arrayOf(ActivityData(ActFeature.HEART_RATE, OpType.ID),
+                                ActivityData(ActFeature.HEART_RATE, OpType.AVG)),
+                        arrayOf(ActivityData(ActFeature.POWER_COMBINED, OpType.ID),
+                                ActivityData(ActFeature.POWER_COMBINED, OpType.NORM_AVG)),
+                        arrayOf(ActivityData(ActFeature.CADENCE, OpType.ID),
+                                ActivityData(ActFeature.CADENCE, OpType.NORM_AVG)))
+            }
+        }
+
     }
+
 
 }

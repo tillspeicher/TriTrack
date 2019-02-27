@@ -5,6 +5,23 @@ import java.text.FieldPosition
 import java.text.Format
 import java.text.ParsePosition
 
+class ActivityData(val feature: ActFeature, val op: OpType) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+
+        other as ActivityData
+
+        return feature == other.feature && op == other.op
+    }
+
+    override fun hashCode(): Int {
+        var result = feature.hashCode()
+        result = 31 * result + op.hashCode()
+        return result
+    }
+}
+
 /**
  * Created by till on 22.12.16.
  */
@@ -26,7 +43,7 @@ enum class ActFeature(val description: String, val unit: String, private val mFo
     HEART_RATE("Heart Rate", "bpm", DecimalFormat("#")),
     POWER_LEFT("Power left", "W", DecimalFormat("#")),
     POWER_RIGHT("Power right", "W", DecimalFormat("#")),
-    POWER_COMBINED("Power comb.", "W", DecimalFormat("#")),
+    POWER_COMBINED("Power", "W", DecimalFormat("#")),
     CUMULATIVE_WHEEL_REVOLUTIONS("Cumulative Wheel Revolutions", "#", DecimalFormat("#")),
     LAST_WHEEL_EVENT("Last Wheel Event", "1/1024s", DecimalFormat("#")),
     CUMULATIVE_CRANK_REVOLUTIONS("Cumulative Crank Revolutions", "#", DecimalFormat("#")),
@@ -59,4 +76,12 @@ enum class ActFeature(val description: String, val unit: String, private val mFo
             throw UnsupportedOperationException("not implemented")
         }
     }
+}
+
+enum class OpType(val prefix: String) {
+    ID (""),
+    AVG ("Avg "),
+    MAX ("Max "),
+    NORM_AVG ("Avg norm. "),
+    OFFSET ("") // used to make values like time or distance start at 0 when they are subscribed later
 }

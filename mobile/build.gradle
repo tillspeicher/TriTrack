@@ -2,7 +2,7 @@ apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
 
 android {
-    compileSdkVersion 27
+    compileSdkVersion compile_sdk_version
     buildToolsVersion build_tools_version
     defaultConfig {
         applicationId app_id

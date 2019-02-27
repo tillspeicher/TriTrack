@@ -1,16 +1,18 @@
 package de.tritrack.recording.recording
 
 import android.content.Context
-import android.util.Log
 
 import io.nlopez.smartlocation.OnLocationUpdatedListener
 import io.nlopez.smartlocation.SmartLocation
 import io.nlopez.smartlocation.location.config.LocationParams
 import io.nlopez.smartlocation.location.providers.LocationGooglePlayServicesWithFallbackProvider
 import io.reactivex.Observable
+import io.reactivex.Observer
 import io.reactivex.disposables.Disposable
 import io.reactivex.functions.Consumer
-import java.util.*
+import rx.subjects.BehaviorSubject
+import kotlin.collections.ArrayList
+import kotlin.collections.HashSet
 
 /**
  * Created by till on 22.12.16.
@@ -24,8 +26,8 @@ class Recorder private constructor(context: Context) {
         private set
 
     private val mLocation: SmartLocation.LocationControl
-    private val mBleRecorder: BleRecorder
-    private val mDataStreamer: DataStreamer
+    private val mBleRecorder = BleRecorder(context)
+    private val mDataStreamer = DataStreamer()
     private var mStorageManager: StorageManager? = null
     private var mAutoPauseSubscription: Disposable? = null
 
@@ -43,12 +45,19 @@ class Recorder private constructor(context: Context) {
         RESTARTED
     }
 
+    private val aggregatedActivityFeatures: MutableSet<ActivityData> = HashSet()
+    private val segmentSubscribers: MutableList<(Int) -> Unit> = ArrayList()
+    private val overallObservables: MutableMap<ActivityData, BehaviorSubject<Double>> = HashMap()
+    // We need to hold on to references here to prevent the Observables getting garbage collected
+    // in the UI
+    private val segmentObservables: MutableList<Map<ActivityData, BehaviorSubject<Double>>> =
+            ArrayList()
+    private val curSegmentSubscriptions: MutableList<Disposable> = ArrayList()
+
     init {
-        mRecorderState = RecorderState.STOPPED
-        mLocation = SmartLocation.with(context).location(LocationGooglePlayServicesWithFallbackProvider(context))
+        mLocation = SmartLocation.with(context).location(
+                LocationGooglePlayServicesWithFallbackProvider(context))
         mLocation.config(LocationParams.NAVIGATION)
-        mBleRecorder = BleRecorder(context)
-        mDataStreamer = DataStreamer()
     }
 
     fun startBleScan(scanListener: BlePool.SensorDeviceScanListener) {
@@ -59,8 +68,45 @@ class Recorder private constructor(context: Context) {
         mBleRecorder.stopNewDevicesScan()
     }
 
-    fun getDataObservable(feature: ActFeature, op: OpType): Observable<Double> {
-        return mDataStreamer.getOperator(feature, op)
+    fun monitorFeatures(features: Set<ActivityData>, listener: (Int) -> Unit) {
+        assert(mRecorderState == RecorderState.STOPPED)
+
+        aggregatedActivityFeatures.addAll(features)
+        segmentSubscribers.add(listener)
+        features.forEach {
+            if (!overallObservables.contains(it)) {
+                // TODO: check share with what happens in UI currently
+                val interceptSubject = BehaviorSubject.create<Double>()
+                mDataStreamer.getOperator(it).forEach { interceptSubject.onNext(it) }
+                overallObservables[it] = interceptSubject
+            }
+        }
+    }
+
+    fun getSegmentObservations(segmentId: Int, features: Set<ActivityData>):
+            Map<ActivityData, BehaviorSubject<Double>> {
+        if (segmentId == GLOBAL_SEGMENT_ID)
+            return adjustToSubscriber(overallObservables, features)
+        return adjustToSubscriber(segmentObservables[segmentId], features)
+    }
+
+    fun nextSegment() {
+        // unsubscribe the previous segment observables
+        curSegmentSubscriptions.forEach { it.dispose() }
+        curSegmentSubscriptions.clear()
+
+        val newSegmentObservables = aggregatedActivityFeatures.map {
+            val sourceOp = mDataStreamer.getOperator(it)
+            // TODO: try to find a better way for canceling subscriptions that does not involve
+            // creating an intermediate Behavior Subject
+            val interceptSubject = BehaviorSubject.create<Double>()
+            val subscription = sourceOp.forEach { interceptSubject.onNext(it) }
+            curSegmentSubscriptions.add(subscription)
+            // TODO: do we need replay and ref count here?
+            it to interceptSubject }.toMap()
+        val segmentId = segmentObservables.size
+        segmentObservables.add(newSegmentObservables)
+        segmentSubscribers.forEach { it(segmentId) }
     }
 
     /**
@@ -75,22 +121,22 @@ class Recorder private constructor(context: Context) {
             mBleRecorder.stopRecording()
             mStorageManager!!.stopStoring()
             mDataStreamer.setResumed(false)
+            mStorageManager = null
             return false
         }
 
         // start recording
         mRecorderState = RecorderState.RUNNING
         wasStarted = true
-        mStorageManager = mDataStreamer.resetState()
+        mDataStreamer.resetState()
+        mStorageManager = StorageManager(mDataStreamer)
         // TODO: add settings switch for auto-pause
         addAutoPauseListener()
+        nextSegment()
 
-        val latPublisher = mDataStreamer
-                .getInputProvider(ActFeature.LATITUDE)
-        val lonPublisher = mDataStreamer
-                .getInputProvider(ActFeature.LONGITUDE)
-        val altitudePublisher = mDataStreamer
-                .getInputProvider(ActFeature.ALTITUDE)
+        val latPublisher = mDataStreamer.getInputProvider(ActFeature.LATITUDE)
+        val lonPublisher = mDataStreamer.getInputProvider(ActFeature.LONGITUDE)
+        val altitudePublisher = mDataStreamer.getInputProvider(ActFeature.ALTITUDE)
 
         val locListener = OnLocationUpdatedListener { location ->
             // TODO: maybe let this depend on the distance from the last fix and the speed
@@ -143,7 +189,8 @@ class Recorder private constructor(context: Context) {
     }
 
     private fun addAutoPauseListener() {
-        mAutoPauseSubscription = mDataStreamer.getOperator(ActFeature.SPEED_KMH, OpType.ID).forEach(
+        val speedFeature = ActivityData(ActFeature.SPEED_KMH, OpType.ID)
+        mAutoPauseSubscription = mDataStreamer.getOperator(speedFeature).forEach(
                 object: Consumer<Double> {
             private var lastSufficientSpeedTime = 0.0
 
@@ -166,6 +213,8 @@ class Recorder private constructor(context: Context) {
 
     companion object {
 
+        const val GLOBAL_SEGMENT_ID = -1
+
         private const val TAG = "de.tritrack.Recorder"
         private const val ACCURACY_THRES = 50f
         private const val AUTO_PAUSE_SPEED_KMH_THRES = 5f //1.5f;
@@ -182,6 +231,14 @@ class Recorder private constructor(context: Context) {
                 return instance!!
             }
         }
+
+        private fun adjustToSubscriber(source: Map<ActivityData, BehaviorSubject<Double>>,
+                                       target: Set<ActivityData>):
+                Map<ActivityData, BehaviorSubject<Double>> {
+            return source.filterKeys { featureDescriptor: ActivityData ->
+                target.contains(featureDescriptor) }
+        }
+
     }
 
 }

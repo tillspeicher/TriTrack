@@ -19,9 +19,6 @@ internal class DataStreamer {
     private val mInputs: MutableMap<ActFeature, PublishSubject<Double>>
     private val mProvidedInputs: MutableSet<ActFeature>
     private val mProviders: MutableMap<ActFeature, Observable<Double>>
-    // TODO: we should be able to get rid of the data listeners map
-    //private val mDataListeners: MutableMap<ActFeature, UICommunication.UIDataListener> private var mStorageManager: StorageManager? = null
-    private var mStorageManager: StorageManager? = null
 
     private var mTimePublisher: PublishSubject<Double>? = null
     private val mTimeHandler: Handler
@@ -59,9 +56,8 @@ internal class DataStreamer {
 //        return operator.forEach { listener.onFeatureChanged(it) }
 //    }
 
-    fun resetState(): StorageManager {
+    fun resetState() {
         // TODO: reset the UI
-        mStorageManager = StorageManager()
 
         //mInputs.clear()
         //mProviders.clear()
@@ -70,8 +66,6 @@ internal class DataStreamer {
         mTimeHandler.removeCallbacksAndMessages(null)
         mTimeOffsetMs = 0
         mTimePublisher = getInputProvider(ActFeature.TIME_S)
-
-        return mStorageManager!!
     }
 
     fun setResumed(isResumed: Boolean) {
@@ -122,10 +116,12 @@ internal class DataStreamer {
         return inSubject!!
     }
 
-    fun getOperator(targetFeature: ActFeature, operatorType: OpType):
+    fun getOperator(dataDescriptor: ActivityData):
             Observable<Double> {
-        val featureProvider = getProvider(targetFeature)
-        return when (operatorType) {
+        val featureProvider = getProvider(dataDescriptor.feature)
+        // TODO: maybe store the wrapped operators somewhere to make sure they're not garbage
+        // collected when the activity moves to the background
+        return when (dataDescriptor.op) {
             OpType.ID -> featureProvider
             OpType.AVG -> featureProvider.map( TimeAvgOperator() )
             OpType.MAX -> featureProvider.map( MaxOperator() )
@@ -261,12 +257,6 @@ internal class DataStreamer {
             throw IllegalArgumentException("Cannot add operator for feature $resFeature twice.")
         Log.i(TAG, "adding operator for feature " + resFeature)
 
-        // TODO: add logging back in
-//        if (logFeature) {
-//            mStorageManager!!.addFeature(resFeature)
-//            addLoggingObserver(resFeature, resObs)
-//        }
-
         // When someone subscribes, give them the last output
         // TODO: check that this does not leak memory somehow
         // TODO: check that a ref count dropping to 0 does not cause unsubscriptions even though we
@@ -276,10 +266,6 @@ internal class DataStreamer {
         return sharedObs
     }
 
-
-    private fun addLoggingObserver(feature: ActFeature, obs: Observable<Double>) {
-        obs.forEach { newVal -> mStorageManager!!.setValue(feature, newVal)}
-    }
 
     private abstract inner class TimedOperator(val useNetTime: Boolean = true) :
             Function<Double, Double> {

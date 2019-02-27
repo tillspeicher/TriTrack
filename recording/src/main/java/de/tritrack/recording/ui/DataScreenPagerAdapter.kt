@@ -1,30 +1,47 @@
 package de.tritrack.recording.ui
 
+import android.content.Context
 import android.support.v4.app.Fragment
 import android.support.v4.app.FragmentManager
 import android.support.v4.app.FragmentPagerAdapter
 import android.support.v4.view.PagerAdapter
+import de.tritrack.recording.recording.Recorder
 
-class DataScreenPagerAdapter(fm: FragmentManager) : FragmentPagerAdapter(fm) {
+class DataScreenPagerAdapter(fm: FragmentManager, context: Context) : FragmentPagerAdapter(fm) {
 
     // TODO: make the number of overall and per lap pages dynamic
-    private var count = INIT_COUNT
     private val lapFragments = ArrayList<DataScreenFragment>()
+    private val segmentIds: MutableList<Int> = ArrayList()
+
+    init {
+        // TODO: hardcoded and hacky
+        segmentIds.add(Recorder.GLOBAL_SEGMENT_ID)
+        segmentIds.add(Recorder.GLOBAL_SEGMENT_ID)
+        val recorder = Recorder.getInstance(context)
+        val totalFeatures = DataScreenFragment.getAllDataDescriptors()
+        // listen to new segments
+        recorder.monitorFeatures(totalFeatures, { segmentId ->
+            segmentIds.add(segmentId)
+            notifyDataSetChanged()
+        })
+    }
 
     override fun getItem(position: Int): Fragment {
-        assert(position < count)
+        assert(position < segmentIds.size)
+        // finds the "original" position
         val remappedPosition = remapPosition(position)
         return if (remappedPosition < lapFragments.size) {
             lapFragments[remappedPosition]
         } else {
-            val fragment = DataScreenFragment.newInstance(remappedPosition)
+            val segmentId = segmentIds[remappedPosition]!!
+            val fragment = DataScreenFragment.newInstance(remappedPosition, segmentId)
             lapFragments.add(fragment)
             fragment
         }
     }
 
     override fun getCount(): Int {
-        return count
+        return segmentIds.size
     }
 
     override fun getItemId(position: Int): Long {
@@ -53,25 +70,21 @@ class DataScreenPagerAdapter(fm: FragmentManager) : FragmentPagerAdapter(fm) {
         return if (position < OVERALL_PAGES_COUNT)
             position
         else
-            (OVERALL_PAGES_COUNT - 1) + count - position
-    }
-
-    fun addLabView() {
-        if (count > OVERALL_PAGES_COUNT)
-            lapFragments.last().stop()
-        count += 1
-        notifyDataSetChanged()
+            (OVERALL_PAGES_COUNT - 1) + segmentIds.size - position
     }
 
     fun reset() {
         lapFragments.clear()
-        count = INIT_COUNT
+        segmentIds.clear()
+        // TODO: hacky, code duplication
+        segmentIds.add(Recorder.GLOBAL_SEGMENT_ID)
+        segmentIds.add(Recorder.GLOBAL_SEGMENT_ID)
         notifyDataSetChanged()
     }
 
     companion object {
 
-        private const val INIT_COUNT = 3
+        private const val INIT_COUNT = 2
         // number of overall data pages (not laps)
         private const val OVERALL_PAGES_COUNT = 2
 
