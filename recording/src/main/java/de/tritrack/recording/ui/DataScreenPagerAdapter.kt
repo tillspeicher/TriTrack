@@ -6,6 +6,7 @@ import android.support.v4.app.FragmentManager
 import android.support.v4.app.FragmentPagerAdapter
 import android.support.v4.view.PagerAdapter
 import de.tritrack.recording.recording.Recorder
+import de.tritrack.recording.recording.SegmentManager
 
 class DataScreenPagerAdapter(fm: FragmentManager, context: Context) : FragmentPagerAdapter(fm) {
 
@@ -15,25 +16,26 @@ class DataScreenPagerAdapter(fm: FragmentManager, context: Context) : FragmentPa
 
     init {
         // TODO: hardcoded and hacky
-        segmentIds.add(Recorder.GLOBAL_SEGMENT_ID)
-        segmentIds.add(Recorder.GLOBAL_SEGMENT_ID)
-        val recorder = Recorder.getInstance(context)
+        segmentIds.add(SegmentManager.GLOBAL_SEGMENT_ID)
+        segmentIds.add(SegmentManager.GLOBAL_SEGMENT_ID)
+        val segmentManager = Recorder.getInstance(context).segmentManager
         val totalFeatures = DataScreenFragment.getAllDataDescriptors()
         // listen to new segments
-        recorder.monitorFeatures(totalFeatures, { segmentId ->
+        segmentManager.monitorFeatures(totalFeatures, { segmentId ->
             segmentIds.add(segmentId)
             notifyDataSetChanged()
         })
     }
 
     override fun getItem(position: Int): Fragment {
+        // TODO: check why restarting doesn't work
         assert(position < segmentIds.size)
         // finds the "original" position
         val remappedPosition = remapPosition(position)
         return if (remappedPosition < lapFragments.size) {
             lapFragments[remappedPosition]
         } else {
-            val segmentId = segmentIds[remappedPosition]!!
+            val segmentId = segmentIds[remappedPosition]
             val fragment = DataScreenFragment.newInstance(remappedPosition, segmentId)
             lapFragments.add(fragment)
             fragment
@@ -77,8 +79,8 @@ class DataScreenPagerAdapter(fm: FragmentManager, context: Context) : FragmentPa
         lapFragments.clear()
         segmentIds.clear()
         // TODO: hacky, code duplication
-        segmentIds.add(Recorder.GLOBAL_SEGMENT_ID)
-        segmentIds.add(Recorder.GLOBAL_SEGMENT_ID)
+        segmentIds.add(SegmentManager.GLOBAL_SEGMENT_ID)
+        segmentIds.add(SegmentManager.GLOBAL_SEGMENT_ID)
         notifyDataSetChanged()
     }
 

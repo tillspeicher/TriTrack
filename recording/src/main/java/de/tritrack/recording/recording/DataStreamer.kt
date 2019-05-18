@@ -65,7 +65,7 @@ internal class DataStreamer {
 
         mTimeHandler.removeCallbacksAndMessages(null)
         mTimeOffsetMs = 0
-        mTimePublisher = getInputProvider(ActFeature.TIME_S)
+        mTimePublisher = getInputProvider(ActFeature.DURATION_S)
     }
 
     fun setResumed(isResumed: Boolean) {

@@ -1,96 +1,110 @@
 package de.tritrack.recording.recording
 
-import android.graphics.Path
+import android.content.Context
 import android.os.Environment
 import android.os.Handler
 import android.util.Log
 
 import java.io.File
-import java.io.FileWriter
 import java.io.IOException
-import java.util.ArrayList
-import java.util.HashMap
 
-import au.com.bytecode.opencsv.CSVWriter
-import io.reactivex.disposables.Disposable
-import io.reactivex.functions.Consumer
+import rx.subjects.BehaviorSubject
+import java.text.SimpleDateFormat
+import java.util.*
 
 /**
  * Created by till on 01.07.17.
  */
 
-internal class StorageManager(dataStreamer: DataStreamer,
-                              vararg loggingFeatures: ActivityData) {
+class StorageManager(context: Context, private val segmentManager: SegmentManager) {
 
-    // TODO: can we directly create a mutable map?
-    // TODO: should we synchronize access to this map?
-    private val curValues: MutableMap<ActivityData, Double> =
-            loggingFeatures.associate { it to 0.0 }.toMutableMap()
-    private val listenerHandles = mutableListOf<Disposable>()
     private val handler = Handler()
-    //private val activityRecording = ActivityRecording(loggingFeatures)
+    private val configManager = ConfigManager.getInstance(context)
+    private var storageFeatures = configManager.getStorageFeatures()
+    //private val logFile = File(context.filesDir, "activity.log")
+    //private var activityLog = ActivityLog(storageFeatures, logFile)
+    // TODO: configure the set of features here
+    //private var recordingFeatures = arrayOf(ActFeature.TIME_S, ActFeature.DISTANCE_KM)
+    private var recordingFeatures = storageFeatures.map { it.feature }.toTypedArray()
+    private var activityRecording: ActivityRecording? = null
+
+    private var featureObs = emptyMap<ActFeature, BehaviorSubject<Double>>()
+    private var overallObs = emptyMap<ActivityData, BehaviorSubject<Double>>()
+    private var curSegmentObs = emptyMap<ActivityData, BehaviorSubject<Double>>()
 
     init {
-        loggingFeatures.map { loggingFeature ->
-            // TODO: do we need to share? Try to get rid of it here and in the DataScreenFragment
-            // and move it to the DataStreamer instead
-            val featureObs = dataStreamer.getOperator(loggingFeature)//.share()
-            listenerHandles.add(featureObs.forEach { featureVal ->
-                curValues[loggingFeature] = featureVal })
-        }
+        segmentManager.monitorFeatures(storageFeatures.asIterable(), {
+            curSegmentObs = segmentManager.getSegmentObservations(it, storageFeatures.asIterable())
+            writeCurState(ActivityLog.RecordType.SEGMENT_BOUNDARY)
+        })
+        overallObs = segmentManager.getSegmentObservations(SegmentManager.GLOBAL_SEGMENT_ID,
+                storageFeatures.asIterable())
+        featureObs = segmentManager.getSegmentObservations(SegmentManager.GLOBAL_SEGMENT_ID,
+                recordingFeatures.map { ActivityData(it, OpType.ID) }).mapKeys { it.key.feature }
     }
 
-    fun startStoring() {
-        // TODO: use internal directory and only export on request
-        val outDir = File(Environment.getExternalStoragePublicDirectory(
-                Environment.DIRECTORY_DOCUMENTS), "TriTracks")
-        if (!outDir.exists() && !outDir.mkdirs()) {
-            Log.e(TAG, "Cannot create out dir " + outDir.path)
-            return
-        }
-        val time = System.currentTimeMillis() / 1000
-        val outFile = File(outDir, "Track_$time")
-
-        try {
-            outFile.createNewFile()
-            val fw = FileWriter(outFile, true)
-            // TODO
-            //mWriter = CSVWriter(fw, CSVWriter.DEFAULT_SEPARATOR, CSVWriter.NO_QUOTE_CHARACTER)
-        } catch (ex: IOException) {
-            Log.e(TAG, "Error creating out file: " + ex.message)
-            return
-        }
-
+    internal fun startStoring() {
+        activityRecording = ActivityRecording(System.currentTimeMillis(), recordingFeatures)
         resumeStoring()
     }
 
     // TODO: check that these methods are called in the right way/states
-    fun resumeStoring() {
-        handler.post(object : Runnable {
+    private fun resumeStoring() {
+        handler.post(object: Runnable {
             override fun run() {
-                //activityRecording.addDataPoint(curValues)
+                writeCurState(ActivityLog.RecordType.REGULAR)
+                handler.postDelayed(this, STORAGE_INTERVAL_MS)
             }
         })
     }
 
-    fun pauseStoring() {
+    internal fun pauseStoring() {
+        // TODO: update values again
         handler.removeCallbacksAndMessages(null)
+        writeCurState(ActivityLog.RecordType.PAUSE_START)
     }
 
-    fun stopStoring() {
+    internal fun endStoring() {
         pauseStoring()
-        try {
-            //mWriter!!.close()
-        } catch (ex: IOException) {
-            Log.e(TAG, "Error closing csv writer: " + ex.message)
-        }
+        writeCurState(ActivityLog.RecordType.END)
 
+        val outDir = getStorageDir()
+        outDir?.let {
+            val time = activityRecording!!.startTimestampMs
+            val date_formatter = SimpleDateFormat("dd/MM/yyyy-HH:mm:ss")
+            date_formatter.timeZone = TimeZone.getDefault()
+            val human_readable_time = date_formatter.format(time)
+            Log.i("tag", human_readable_time)
+            val outFile = File(outDir, "Track_$time.fit")
+            ActivityRecording.toFitFile(activityRecording!!, outFile)
+        }
+    }
+
+    private fun writeCurState(recType: ActivityLog.RecordType) {
+        // TODO: store global state as well
+        // and try to have only one most up to date version of it
+        //val curVals = storageFeatures.associate { it to curSegmentObs[it]!!.value }
+        //activityLog.addDataPoint(curVals, recType)
+        val timeMs = System.currentTimeMillis()
+        val curVals = recordingFeatures.associate { it to featureObs[it]!!.value }
+        activityRecording!!.addData(timeMs, curVals)
     }
 
     companion object {
 
-        private val TAG = "StorageManager"
+        private const val TAG = "StorageManager"
         private val STORAGE_INTERVAL_MS: Long = 5000
+
+        fun getStorageDir(): File? {
+            // TODO: use internal directory and only export on request
+            val outDir = File(Environment.getExternalStoragePublicDirectory(
+                    Environment.DIRECTORY_DOCUMENTS), "TriTracks")
+            if (!outDir.exists() && !outDir.mkdirs()) {
+                Log.e(TAG, "Cannot create out dir " + outDir.path)
+                return null
+            }
+            return outDir
+        }
     }
 
 }

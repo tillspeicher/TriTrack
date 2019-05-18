@@ -11,4 +11,6 @@
 
     <dimen name="data_screen_horizontal_margin">16dp</dimen>
     <dimen name="data_screen_vertical_margin">16dp</dimen>
+    <dimen name="app_bar_height">180dp</dimen>
+    <dimen name="fab_margin">16dp</dimen>
 </resources>

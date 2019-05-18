@@ -44,6 +44,10 @@ class MainActivity : AppCompatActivity() {
                     val bleDeviceSelectionIntent = Intent(this, BleDeviceSelectionActivity::class.java)
                     startActivity(bleDeviceSelectionIntent)
                 }
+                R.id.action_overview_activity -> {
+                    val overviewIntent = Intent(this, RecordingOverviewActivity::class.java)
+                    startActivity(overviewIntent)
+                }
                 R.id.action_end_app -> {
                     finish()
                 }
@@ -76,7 +80,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         mLapButton!!.setOnClickListener {
-            mRec!!.nextSegment()
+            mRec!!.segmentManager.nextSegment()
             // TODO
             //mDataAdapter!!.addLabView()
         }
@@ -209,6 +213,9 @@ class MainActivity : AppCompatActivity() {
             val bleDeviceSelectionIntent = Intent(this, BleDeviceSelectionActivity::class.java)
             startActivity(bleDeviceSelectionIntent)
             return true
+        } else if (id == R.id.action_overview_activity) {
+            val overviewIntent = Intent(this, RecordingOverviewActivity::class.java)
+            startActivity(overviewIntent)
         }
 
         return super.onOptionsItemSelected(item)

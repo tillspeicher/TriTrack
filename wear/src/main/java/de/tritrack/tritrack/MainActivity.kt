@@ -19,7 +19,6 @@ import java.util.ArrayList
 import de.tritrack.recording.recording.ActFeature
 import de.tritrack.recording.recording.OpType
 import de.tritrack.recording.recording.Recorder
-import de.tritrack.recording.recording.UICommunication
 import de.tritrack.recording.ui.DataTableProvider
 
 class MainActivity : WearableActivity() {
@@ -39,7 +38,7 @@ class MainActivity : WearableActivity() {
         mContainerView = findViewById<View>(R.id.container) as BoxInsetLayout
 
         mRec = Recorder.getInstance(applicationContext)
-        val featureLayout = arrayOf(arrayOf(Pair(ActFeature.TIME_S, OpType.ID), Pair(ActFeature.DISTANCE_KM, OpType.ID)),
+        val featureLayout = arrayOf(arrayOf(Pair(ActFeature.DURATION_S, OpType.ID), Pair(ActFeature.DISTANCE_KM, OpType.ID)),
                 arrayOf(Pair(ActFeature.PACE, OpType.ID), Pair(ActFeature.PACE, OpType.AVG)),
                 //                new ActFeature[]{ActFeature.HEART_RATE, ActFeature.AVG_HEART_RATE}
                 arrayOf(Pair(ActFeature.SPEED_MS, OpType.ID), Pair(ActFeature.SPEED_KMH, OpType.ID)))

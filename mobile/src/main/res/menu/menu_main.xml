@@ -13,8 +13,13 @@
         android:title="BLE devices"
         app:showAsAction="never" />
     <item
-        android:id="@+id/action_end_app"
+        android:id="@+id/action_overview_activity"
         android:orderInCategory="300"
+        android:title="Overview Activity"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_end_app"
+        android:orderInCategory="400"
         android:title="Quit"
         app:showAsAction="never" />
 </menu>

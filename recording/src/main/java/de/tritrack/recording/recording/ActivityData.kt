@@ -20,6 +20,10 @@ class ActivityData(val feature: ActFeature, val op: OpType) {
         result = 31 * result + op.hashCode()
         return result
     }
+
+    override fun toString(): String {
+        return "($feature, $op)"
+    }
 }
 
 /**
@@ -27,7 +31,8 @@ class ActivityData(val feature: ActFeature, val op: OpType) {
  */
 
 enum class ActFeature(val description: String, val unit: String, private val mFormat: Format) {
-    TIME_S("Duration", "", TimeFormatter(true)),
+    TIMESTAMP("Timestamp", "", TimeFormatter(true)),
+    DURATION_S("Duration", "", TimeFormatter(true)),
     LATITUDE("Lat", "deg", DecimalFormat("#.#######")),
     LONGITUDE("Lon", "deg", DecimalFormat("#.#######")),
     ALTITUDE("Altitude", "m", DecimalFormat("#")),
@@ -59,14 +64,14 @@ enum class ActFeature(val description: String, val unit: String, private val mFo
     }
 
     // TODO: this is a workaround
-    private class TimeFormatter(private val mIncludeHours: Boolean) : Format() {
+    private class TimeFormatter(private val includeHours: Boolean, private val isTimestamp: Boolean = false) : Format() {
 
         override fun format(number: Any, toAppendTo: StringBuffer, pos: FieldPosition): StringBuffer {
             // it actually is a double
             val secD = number as Double
             val s = secD.toInt()
             var duration = String.format("%02d:%02d", s % 3600 / 60, s % 60)
-            if (mIncludeHours)
+            if (includeHours)
                 duration = String.format("%d:", s / 3600) + duration
             toAppendTo.append(duration)
             return toAppendTo

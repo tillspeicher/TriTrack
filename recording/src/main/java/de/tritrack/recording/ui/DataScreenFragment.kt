@@ -11,11 +11,7 @@ import de.tritrack.recording.recording.ActFeature
 import de.tritrack.recording.recording.ActivityData
 import de.tritrack.recording.recording.OpType
 import de.tritrack.recording.recording.Recorder
-import io.reactivex.Observable
-import io.reactivex.Observer
-import io.reactivex.disposables.Disposable
 import rx.subjects.BehaviorSubject
-import kotlin.collections.ArrayList
 
 class DataScreenFragment : Fragment() {
 
@@ -28,10 +24,10 @@ class DataScreenFragment : Fragment() {
         val screenId = arguments!!.getInt(ARG_SCREEN_ID)
         mScreenLayout = getDataDescriptors(screenId)
 
-        val recorder = Recorder.getInstance(activity!!.applicationContext)
+        val segmentManager = Recorder.getInstance(activity!!.applicationContext).segmentManager
         val segmentId = arguments!!.getInt(ARG_SEGMENT_ID)
         val segmentFeatures = mScreenLayout!!.flatten().toSet()
-        val segmentObservations = recorder.getSegmentObservations(segmentId, segmentFeatures)
+        val segmentObservations = segmentManager.getSegmentObservations(segmentId, segmentFeatures)
         mObservations = mScreenLayout!!.map { row -> row.map {
             actData -> segmentObservations[actData]!! }}
     }
@@ -69,7 +65,7 @@ class DataScreenFragment : Fragment() {
         private fun getDataDescriptors(id: Int): Array<Array<ActivityData>> {
             // TODO: make configurable
             return when(id) {
-                0 -> arrayOf(arrayOf(ActivityData(ActFeature.TIME_S, OpType.ID),
+                0 -> arrayOf(arrayOf(ActivityData(ActFeature.DURATION_S, OpType.ID),
                         ActivityData(ActFeature.DISTANCE_KM, OpType.ID)),
                         arrayOf(ActivityData(ActFeature.SPEED_KMH, OpType.ID),
                                 ActivityData(ActFeature.SPEED_KMH, OpType.AVG)),
@@ -90,7 +86,7 @@ class DataScreenFragment : Fragment() {
                         arrayOf(ActivityData(ActFeature.POWER_COMBINED, OpType.AVG),
                                 ActivityData(ActFeature.CADENCE, OpType.AVG)))
                 // TODO: this is the interval part, make it configurable, etc.
-                else -> arrayOf(arrayOf(ActivityData(ActFeature.TIME_S, OpType.OFFSET),
+                else -> arrayOf(arrayOf(ActivityData(ActFeature.DURATION_S, OpType.OFFSET),
                         ActivityData(ActFeature.DISTANCE_KM, OpType.OFFSET)),
                         arrayOf(ActivityData(ActFeature.SPEED_KMH, OpType.ID),
                                 ActivityData(ActFeature.SPEED_KMH, OpType.AVG)),
